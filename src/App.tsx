@@ -10,6 +10,11 @@ import { deleteMediaBlob, getMediaBlob, loadWorkspaceDraft, saveMediaBlob, saveW
 import { buildAndroidZip, buildCardCsv, buildWorkspaceJson, downloadBlob } from './zip/exporters'
 import { importWorkspaceFile } from './zip/importers'
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
+
 const highlightColors: HighlightColor[] = ['Blue', 'Red', 'Yellow', 'Green']
 const tutorialStepCount = 15
 const defaultColumnWidths = { left: 590, right: 220 }
@@ -52,6 +57,8 @@ function WindowsLikePwa() {
   const [message, setMessage] = useState<{ text: string; persistent: boolean } | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showTutorial, setShowTutorial] = useState(() => localStorage.getItem('flashcards-pwa-tutorial-completed') !== 'true')
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [isInstalled, setIsInstalled] = useState(() => isStandaloneDisplay())
   const [tutorialStep, setTutorialStep] = useState(0)
   const [fastEdit, setFastEdit] = useState(false)
   const [folderName, setFolderName] = useState('')
@@ -108,6 +115,24 @@ function WindowsLikePwa() {
   useEffect(() => {
     armPwaBackGuard()
   }, [])
+
+  useEffect(() => {
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault()
+      setInstallPrompt(event as BeforeInstallPromptEvent)
+    }
+    const onAppInstalled = () => {
+      setIsInstalled(true)
+      setInstallPrompt(null)
+      notify(t('install.installedMessage'))
+    }
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    window.addEventListener('appinstalled', onAppInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', onAppInstalled)
+    }
+  }, [t])
 
   useEffect(() => {
     const onPopState = () => {
@@ -205,6 +230,27 @@ function WindowsLikePwa() {
 
   function notify(text: string, persistent = false) {
     setMessage({ text, persistent })
+  }
+
+  async function installAppToPc() {
+    if (isStandaloneDisplay()) {
+      setIsInstalled(true)
+      notify(t('install.alreadyInstalled'), true)
+      return
+    }
+    if (!installPrompt) {
+      notify(t('install.manualShortcut'), true)
+      return
+    }
+    await installPrompt.prompt()
+    const choice = await installPrompt.userChoice
+    if (choice.outcome === 'accepted') {
+      setIsInstalled(true)
+      setInstallPrompt(null)
+      notify(t('install.installedMessage'))
+    } else {
+      notify(t('install.manualShortcut'), true)
+    }
   }
 
   function selectFolder(path: string) {
@@ -540,6 +586,7 @@ function WindowsLikePwa() {
           <select value={language} onChange={(event) => setLanguage(event.target.value)} aria-label={t('button.language')}>
             {supportedLanguages.map((item) => <option value={item.code} key={item.code}>{languageNameForUi(item.code, language, item.displayName)}{item.beta ? ` (${t('language.beta')})` : ''}</option>)}
           </select>
+          <button className="primary" onClick={installAppToPc}>{isInstalled ? t('install.installed') : t('install.addToPc')}</button>
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? t('button.light') : t('button.dark')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'help')} onClick={() => setShowHelp(true)}>{t('button.help')}</button>
           <label className={withTutorialFocus('file-button', activeTutorialTargets, 'open-file')}>{t('button.open')}<input type="file" accept=".zip,.json,.csv" onChange={(event) => openFile(event.target.files?.[0], false)} /></label>
@@ -547,6 +594,10 @@ function WindowsLikePwa() {
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(buildWorkspaceJson(workspace), 'workspace.json')}>{t('button.jsonTemplate')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={downloadZipTemplate}>{t('button.zipTemplate')}</button>
           <button onClick={saveZip} className={withTutorialFocus('primary', activeTutorialTargets, 'zip-export')}>{t('button.saveZip')}</button>
+        </div>
+        <div className="install-guidance">
+          <strong>{t('install.guidanceTitle')}</strong>
+          <span>{t('install.guidanceBody')}</span>
         </div>
       </header>
 
@@ -929,6 +980,13 @@ function armPwaBackGuard() {
 
 function isPwaGuardHash(hash: string) {
   return hash === '#flashcards-pwa-guard'
+}
+
+function isStandaloneDisplay() {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  )
 }
 
 function isHighlightAligned(value: string, highlight: TextHighlight) {
