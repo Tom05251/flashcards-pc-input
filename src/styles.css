@@ -193,6 +193,39 @@ body[data-theme='light'] .item-list article span {
   white-space: nowrap;
 }
 
+.install-guidance button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 3px 8px;
+}
+
+.install-help {
+  position: fixed;
+  top: 152px;
+  right: 18px;
+  z-index: 45;
+  display: grid;
+  grid-template-columns: minmax(280px, 520px) auto;
+  gap: 14px;
+  max-width: min(760px, calc(100vw - 36px));
+  padding: 16px;
+  background: #102235;
+}
+
+.install-help h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.install-help p {
+  margin: 0 0 8px;
+}
+
+.install-help ol {
+  margin: 0;
+  padding-left: 22px;
+}
+
 .status-line {
   position: fixed;
   left: 18px;
@@ -227,6 +260,10 @@ body[data-theme='light'] .install-guidance {
 
 body[data-theme='light'] .install-guidance strong {
   color: #185fae;
+}
+
+body[data-theme='light'] .install-help {
+  background: #ffffff;
 }
 
 body[data-theme='light'] button.danger {
