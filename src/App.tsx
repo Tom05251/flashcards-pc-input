@@ -59,6 +59,7 @@ function WindowsLikePwa() {
   const [showTutorial, setShowTutorial] = useState(() => localStorage.getItem('flashcards-pwa-tutorial-completed') !== 'true')
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(() => isStandaloneDisplay())
+  const [showInstallHelp, setShowInstallHelp] = useState(false)
   const [tutorialStep, setTutorialStep] = useState(0)
   const [fastEdit, setFastEdit] = useState(false)
   const [folderName, setFolderName] = useState('')
@@ -239,6 +240,7 @@ function WindowsLikePwa() {
       return
     }
     if (!installPrompt) {
+      setShowInstallHelp(true)
       notify(t('install.manualShortcut'), true)
       return
     }
@@ -249,6 +251,7 @@ function WindowsLikePwa() {
       setInstallPrompt(null)
       notify(t('install.installedMessage'))
     } else {
+      setShowInstallHelp(true)
       notify(t('install.manualShortcut'), true)
     }
   }
@@ -598,10 +601,27 @@ function WindowsLikePwa() {
         <div className="install-guidance">
           <strong>{t('install.guidanceTitle')}</strong>
           <span>{t('install.guidanceBody')}</span>
+          <button onClick={() => setShowInstallHelp(true)}>{t('install.showSteps')}</button>
         </div>
       </header>
 
       {message && <div className="status-line panel"><span>{message.text}</span><button onClick={() => setMessage(null)}>{t('button.close')}</button></div>}
+      {showInstallHelp && (
+        <div className="install-help panel" role="dialog" aria-label={t('install.helpTitle')}>
+          <div>
+            <h2>{t('install.helpTitle')}</h2>
+            <p>{t('install.helpIntro')}</p>
+            <ol>
+              <li>{t('install.stepOpenBrowser')}</li>
+              <li>{t('install.stepMenu')}</li>
+              <li>{t('install.stepChrome')}</li>
+              <li>{t('install.stepEdge')}</li>
+              <li>{t('install.stepBookmark')}</li>
+            </ol>
+          </div>
+          <button onClick={() => setShowInstallHelp(false)}>{t('button.close')}</button>
+        </div>
+      )}
 
       <main
         className="windows-grid"
