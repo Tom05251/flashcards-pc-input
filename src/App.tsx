@@ -241,7 +241,7 @@ function WindowsLikePwa() {
     const folderItems = activeItems.filter((item) => isItemInFolder(item, selectedFolder))
     if (!q) return folderItems
     return folderItems.filter((item) => {
-      const text = 'question' in item ? `${item.question} ${item.answer} ${item.hint}` : `${item.title} ${item.body}`
+      const text = 'question' in item ? `${item.question} ${item.answer} ${item.hint ?? ''} ${item.hint2 ?? ''} ${item.tags?.join(' ') ?? ''} ${item.folderPath}` : `${item.title} ${item.body} ${item.tags?.join(' ') ?? ''} ${item.folderPath}`
       return text.toLowerCase().includes(q)
     })
   }, [activeItems, search, selectedFolder])
@@ -296,7 +296,8 @@ function WindowsLikePwa() {
     const parentPath = kind === 'child' ? selectedFolder : kind === 'sibling' ? parentPathOf(selectedFolder) : ''
     const path = parentPath ? `${parentPath}/${name}` : name
     if (activeFolders.includes(path)) return notify(t('folder.duplicate'))
-    const names = [...activeFolderNames, { path, displayName: name }]
+    const now = Date.now()
+    const names = [...activeFolderNames, { path, displayName: name, createdAtEpochMillis: now, updatedAtEpochMillis: now }]
     const nextFolders = kind === 'independent'
       ? [path, ...activeFolders.filter((item) => item && item !== path)]
       : [...activeFolders.filter(Boolean), path]
@@ -313,17 +314,26 @@ function WindowsLikePwa() {
     if (/[\\/]/.test(name)) return notify(t('folder.invalidName'))
     const parent = selectedFolder.split('/').slice(0, -1).join('/')
     const nextPath = parent ? `${parent}/${name}` : name
+    if (nextPath !== selectedFolder && activeFolders.includes(nextPath)) return notify(t('folder.duplicate'))
     const replacePath = (path: string) => path === selectedFolder || path.startsWith(`${selectedFolder}/`)
       ? `${nextPath}${path.slice(selectedFolder.length)}`
       : path
+    const editedAt = new Date().toISOString()
+    function remapItem<T extends CardEntry | NoteEntry>(item: T): T {
+      const path = replacePath(item.folderPath)
+      return path === item.folderPath ? item : {
+        ...item, folderPath: path, updatedAt: editedAt,
+        ...(item.sourceFields ? { sourceFields: [...new Set([...item.sourceFields, 'folderPath', 'updatedAt'])] } : {}),
+      }
+    }
     updateWorkspace({
       ...workspace,
-      cards: workspace.cards.map((card) => ({ ...card, folderPath: replacePath(card.folderPath) })),
-      notes: workspace.notes.map((note) => ({ ...note, folderPath: replacePath(note.folderPath) })),
-      cardFolders: workspace.cardFolders.map(replacePath),
-      noteFolders: workspace.noteFolders.map(replacePath),
-      cardFolderNames: workspace.cardFolderNames.map((item) => ({ path: replacePath(item.path), displayName: item.path === selectedFolder ? name : item.displayName })),
-      noteFolderNames: workspace.noteFolderNames.map((item) => ({ path: replacePath(item.path), displayName: item.path === selectedFolder ? name : item.displayName })),
+      cards: mode === 'cards' ? workspace.cards.map(remapItem) : workspace.cards,
+      notes: mode === 'notes' ? workspace.notes.map(remapItem) : workspace.notes,
+      cardFolders: mode === 'cards' ? workspace.cardFolders.map(replacePath) : workspace.cardFolders,
+      noteFolders: mode === 'notes' ? workspace.noteFolders.map(replacePath) : workspace.noteFolders,
+      cardFolderNames: mode === 'cards' ? workspace.cardFolderNames.map((item) => replacePath(item.path) === item.path ? item : ({ ...item, path: replacePath(item.path), displayName: item.path === selectedFolder ? name : item.displayName, updatedAtEpochMillis: Date.now() })) : workspace.cardFolderNames,
+      noteFolderNames: mode === 'notes' ? workspace.noteFolderNames.map((item) => replacePath(item.path) === item.path ? item : ({ ...item, path: replacePath(item.path), displayName: item.path === selectedFolder ? name : item.displayName, updatedAtEpochMillis: Date.now() })) : workspace.noteFolderNames,
       uiState: { ...workspace.uiState, selectedFolderPath: nextPath },
     })
     setFolderName('')
@@ -331,15 +341,15 @@ function WindowsLikePwa() {
 
   function deleteFolder() {
     if (!selectedFolder) return
-    const hasItems = [...workspace.cards, ...workspace.notes].some((item) => item.folderPath === selectedFolder || item.folderPath.startsWith(`${selectedFolder}/`))
+    const hasItems = activeItems.some((item) => item.folderPath === selectedFolder || item.folderPath.startsWith(`${selectedFolder}/`))
     if (hasItems) return notify(t('folder.nonempty'))
     const keep = (path: string) => path !== selectedFolder && !path.startsWith(`${selectedFolder}/`)
     updateWorkspace({
       ...workspace,
-      cardFolders: workspace.cardFolders.filter(keep),
-      noteFolders: workspace.noteFolders.filter(keep),
-      cardFolderNames: workspace.cardFolderNames.filter((item) => keep(item.path)),
-      noteFolderNames: workspace.noteFolderNames.filter((item) => keep(item.path)),
+      cardFolders: mode === 'cards' ? workspace.cardFolders.filter(keep) : workspace.cardFolders,
+      noteFolders: mode === 'notes' ? workspace.noteFolders.filter(keep) : workspace.noteFolders,
+      cardFolderNames: mode === 'cards' ? workspace.cardFolderNames.filter((item) => keep(item.path)) : workspace.cardFolderNames,
+      noteFolderNames: mode === 'notes' ? workspace.noteFolderNames.filter((item) => keep(item.path)) : workspace.noteFolderNames,
       uiState: { ...workspace.uiState, selectedFolderPath: '' },
     })
   }
@@ -398,13 +408,15 @@ function WindowsLikePwa() {
         question: cardForm.question,
         answer: cardForm.answer,
         hint: cardForm.hint,
+        hint2: cardForm.hint2,
         questionHighlights: cardForm.questionHighlights,
         answerHighlights: cardForm.answerHighlights,
         hintHighlights: cardForm.hintHighlights,
+        hint2Highlights: cardForm.hint2Highlights,
         folderPath: selectedFolder,
         media: cardForm.media,
       }
-      preserveOmittedEditableFields(existing, card, ['hint', 'questionHighlights', 'answerHighlights', 'hintHighlights'])
+      preserveOmittedEditableFields(existing, card, ['hint', 'hint2', 'questionHighlights', 'answerHighlights', 'hintHighlights', 'hint2Highlights'])
       if (existing && editableCardContent(existing) !== editableCardContent(card)) card.updatedAt = new Date().toISOString()
       updateWorkspace({
         ...workspace,
@@ -468,9 +480,11 @@ function WindowsLikePwa() {
         question: item.question,
         answer: item.answer,
         hint: item.hint ?? '',
+        hint2: item.hint2 ?? '',
         questionHighlights: item.questionHighlights ?? [],
         answerHighlights: item.answerHighlights ?? [],
         hintHighlights: item.hintHighlights ?? [],
+        hint2Highlights: item.hint2Highlights ?? [],
         media: item.media,
       })
     } else {
@@ -506,6 +520,7 @@ function WindowsLikePwa() {
     if (field === 'CardQuestion') setCardForm({ ...cardForm, questionHighlights: applyHighlight(cardForm.question, cardForm.questionHighlights, highlight) })
     if (field === 'CardAnswer') setCardForm({ ...cardForm, answerHighlights: applyHighlight(cardForm.answer, cardForm.answerHighlights, highlight) })
     if (field === 'CardHint') setCardForm({ ...cardForm, hintHighlights: applyHighlight(cardForm.hint, cardForm.hintHighlights, highlight) })
+    if (field === 'CardHint2') setCardForm({ ...cardForm, hint2Highlights: applyHighlight(cardForm.hint2, cardForm.hint2Highlights, highlight) })
     if (field === 'NoteTitle') setNoteForm({ ...noteForm, titleHighlights: applyHighlight(noteForm.title, noteForm.titleHighlights, highlight) })
     if (field === 'NoteBody') setNoteForm({ ...noteForm, bodyHighlights: applyHighlight(noteForm.body, noteForm.bodyHighlights, highlight) })
   }
@@ -514,6 +529,7 @@ function WindowsLikePwa() {
     if (field === 'CardQuestion') return cardForm.questionHighlights
     if (field === 'CardAnswer') return cardForm.answerHighlights
     if (field === 'CardHint') return cardForm.hintHighlights
+    if (field === 'CardHint2') return cardForm.hint2Highlights
     if (field === 'NoteTitle') return noteForm.titleHighlights
     return noteForm.bodyHighlights
   }
@@ -522,6 +538,7 @@ function WindowsLikePwa() {
     if (field === 'CardQuestion') setCardForm({ ...cardForm, questionHighlights: [] })
     if (field === 'CardAnswer') setCardForm({ ...cardForm, answerHighlights: [] })
     if (field === 'CardHint') setCardForm({ ...cardForm, hintHighlights: [] })
+    if (field === 'CardHint2') setCardForm({ ...cardForm, hint2Highlights: [] })
     if (field === 'NoteTitle') setNoteForm({ ...noteForm, titleHighlights: [] })
     if (field === 'NoteBody') setNoteForm({ ...noteForm, bodyHighlights: [] })
   }
@@ -531,6 +548,7 @@ function WindowsLikePwa() {
     if (field === 'CardQuestion') setCardForm({ ...cardForm, questionHighlights: removeAt(cardForm.questionHighlights) })
     if (field === 'CardAnswer') setCardForm({ ...cardForm, answerHighlights: removeAt(cardForm.answerHighlights) })
     if (field === 'CardHint') setCardForm({ ...cardForm, hintHighlights: removeAt(cardForm.hintHighlights) })
+    if (field === 'CardHint2') setCardForm({ ...cardForm, hint2Highlights: removeAt(cardForm.hint2Highlights) })
     if (field === 'NoteTitle') setNoteForm({ ...noteForm, titleHighlights: removeAt(noteForm.titleHighlights) })
     if (field === 'NoteBody') setNoteForm({ ...noteForm, bodyHighlights: removeAt(noteForm.bodyHighlights) })
   }
@@ -566,21 +584,24 @@ function WindowsLikePwa() {
 
   async function openFile(file: File | undefined, replace: boolean) {
     if (!file) return
-    const preview = await importWorkspaceFile(file)
-    if (replace) {
-      updateWorkspace(preview.workspace)
-    } else {
-      updateWorkspace({
-        ...workspace,
-        cards: mergeImportedEntries(workspace.cards, preview.workspace.cards),
-        notes: mergeImportedEntries(workspace.notes, preview.workspace.notes),
-        cardFolders: Array.from(new Set([...workspace.cardFolders, ...preview.workspace.cardFolders])),
-        noteFolders: Array.from(new Set([...workspace.noteFolders, ...preview.workspace.noteFolders])),
-        cardFolderNames: mergeFolderNames(workspace.cardFolderNames, preview.workspace.cardFolderNames),
-        noteFolderNames: mergeFolderNames(workspace.noteFolderNames, preview.workspace.noteFolderNames),
-      })
+    try {
+      const preview = await importWorkspaceFile(file)
+      setWorkspace((current) => ({
+        ...(replace ? preview.workspace : {
+          ...current,
+          cards: mergeImportedEntries(current.cards, preview.workspace.cards),
+          notes: mergeImportedEntries(current.notes, preview.workspace.notes),
+          cardFolders: Array.from(new Set([...current.cardFolders, ...preview.workspace.cardFolders])),
+          noteFolders: Array.from(new Set([...current.noteFolders, ...preview.workspace.noteFolders])),
+          cardFolderNames: mergeFolderNames(current.cardFolderNames, preview.workspace.cardFolderNames),
+          noteFolderNames: mergeFolderNames(current.noteFolderNames, preview.workspace.noteFolderNames),
+        }),
+        updatedAt: new Date().toISOString(),
+      }))
+      notify(`${t('import.completed')} ${preview.warnings.join(' ')}`)
+    } catch {
+      notify(t('import.failed'), true)
     }
-    notify(`${t('import.completed')} ${preview.warnings.join(' ')}`)
   }
 
   const tutorialSteps = useMemo(() => Array.from({ length: tutorialStepCount }, (_, index) => ({
@@ -622,7 +643,7 @@ function WindowsLikePwa() {
           <button className="primary" onClick={installAppToPc}>{isInstalled ? t('install.installed') : t('install.addToPc')}</button>
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? t('button.light') : t('button.dark')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'help')} onClick={() => setShowHelp(true)}>{t('button.help')}</button>
-          <label className={withTutorialFocus('file-button', activeTutorialTargets, 'open-file')}>{t('button.open')}<input type="file" accept=".zip,.json,.csv" onChange={(event) => openFile(event.target.files?.[0], false)} /></label>
+          <label className={withTutorialFocus('file-button', activeTutorialTargets, 'open-file')}>{t('button.open')}<input type="file" accept=".zip,.json,.csv" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void openFile(file, false) }} /></label>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(mode === 'cards' ? buildCardCsv(workspace.cards) : buildNoteCsv(workspace.notes), mode === 'cards' ? 'cards_template.csv' : 'notes_template.csv')}>{t('button.csvTemplate')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(buildWorkspaceJson(workspace), 'workspace.json')}>{t('button.jsonTemplate')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={downloadZipTemplate}>{t('button.zipTemplate')}</button>
@@ -806,6 +827,7 @@ function CardEditor({ form, setForm, t, onHighlight, onClearHighlights, onListHi
     <HighlightInputBlock label={t('label.question')} value={form.question} onChange={(question, questionHighlights) => setForm({ ...form, question, questionHighlights })} field="CardQuestion" t={t} onHighlight={onHighlight} onClearHighlights={onClearHighlights} onListHighlights={onListHighlights} highlights={form.questionHighlights} selection={selections.CardQuestion} onSelection={onSelection} activeTutorialTargets={activeTutorialTargets} />
     <HighlightInputBlock label={t('label.answer')} value={form.answer} onChange={(answer, answerHighlights) => setForm({ ...form, answer, answerHighlights })} field="CardAnswer" t={t} onHighlight={onHighlight} onClearHighlights={onClearHighlights} onListHighlights={onListHighlights} highlights={form.answerHighlights} selection={selections.CardAnswer} onSelection={onSelection} activeTutorialTargets={activeTutorialTargets} />
     <HighlightInputBlock label={t('label.hint')} value={form.hint} onChange={(hint, hintHighlights) => setForm({ ...form, hint, hintHighlights })} field="CardHint" t={t} onHighlight={onHighlight} onClearHighlights={onClearHighlights} onListHighlights={onListHighlights} highlights={form.hintHighlights} selection={selections.CardHint} onSelection={onSelection} activeTutorialTargets={activeTutorialTargets} />
+    <HighlightInputBlock label={t('label.hint2')} value={form.hint2} onChange={(hint2, hint2Highlights) => setForm({ ...form, hint2, hint2Highlights })} field="CardHint2" t={t} onHighlight={onHighlight} onClearHighlights={onClearHighlights} onListHighlights={onListHighlights} highlights={form.hint2Highlights} selection={selections.CardHint2} onSelection={onSelection} activeTutorialTargets={activeTutorialTargets} />
   </div>
 }
 
@@ -823,7 +845,10 @@ function HighlightInputBlock({ label, value, onChange, field, t, onHighlight, on
     <label><span>{label}</span>
       <div className="highlight-input-shell">
         <div className="highlight-input-overlay" aria-hidden="true">{renderHighlightedText(value || ' ', highlights, t)}</div>
-        <textarea data-highlight-field={field} className={textareaClass} value={value} onChange={(event) => handleChange(event.target.value)} onSelect={(event) => onSelection(field, value, event.currentTarget)} onKeyUp={(event) => onSelection(field, value, event.currentTarget)} spellCheck={false} />
+        <textarea data-highlight-field={field} className={textareaClass} value={value} onChange={(event) => handleChange(event.target.value)} onSelect={(event) => onSelection(field, value, event.currentTarget)} onKeyUp={(event) => onSelection(field, value, event.currentTarget)} onScroll={(event) => {
+          const overlay = event.currentTarget.previousElementSibling
+          if (overlay instanceof HTMLElement) { overlay.scrollTop = event.currentTarget.scrollTop; overlay.scrollLeft = event.currentTarget.scrollLeft }
+        }} spellCheck={false} />
       </div>
     </label>
     <HighlightToolbar field={field} t={t} onHighlight={onHighlight} onClearHighlights={onClearHighlights} onListHighlights={onListHighlights} highlights={highlights.length} activeTutorialTargets={activeTutorialTargets} />
@@ -897,9 +922,9 @@ function Modal({ title, children, onClose, className = '' }: { title: string; ch
   return <div className={`modal-backdrop ${className}`}><section className="modal"><header><h2>{title}</h2><button onClick={onClose}>{t('button.close')}</button></header>{children}</section></div>
 }
 
-type HighlightField = 'CardQuestion' | 'CardAnswer' | 'CardHint' | 'NoteTitle' | 'NoteBody'
+type HighlightField = 'CardQuestion' | 'CardAnswer' | 'CardHint' | 'CardHint2' | 'NoteTitle' | 'NoteBody'
 type T = (key: string, ...args: Array<string | number>) => string
-type CardForm = Pick<CardEntry, 'question' | 'answer' | 'hint' | 'questionHighlights' | 'answerHighlights' | 'hintHighlights' | 'media'>
+type CardForm = Pick<CardEntry, 'question' | 'answer' | 'hint' | 'questionHighlights' | 'answerHighlights' | 'hintHighlights' | 'media'> & { hint2: string; hint2Highlights: TextHighlight[] }
 type NoteForm = Pick<NoteEntry, 'title' | 'body' | 'titleHighlights' | 'bodyHighlights' | 'media'>
 interface TextSelectionState { start: number; end: number; text: string }
 interface FieldBlockProps {
@@ -938,7 +963,7 @@ interface NoteEditorProps {
 }
 
 function blankCardForm(): CardForm {
-  return { question: '', answer: '', hint: '', questionHighlights: [], answerHighlights: [], hintHighlights: [], media: [] }
+  return { question: '', answer: '', hint: '', hint2: '', questionHighlights: [], answerHighlights: [], hintHighlights: [], hint2Highlights: [], media: [] }
 }
 
 function blankNoteForm(): NoteForm {
@@ -950,6 +975,7 @@ function blankSelections(): Record<HighlightField, TextSelectionState> {
     CardQuestion: { start: 0, end: 0, text: '' },
     CardAnswer: { start: 0, end: 0, text: '' },
     CardHint: { start: 0, end: 0, text: '' },
+    CardHint2: { start: 0, end: 0, text: '' },
     NoteTitle: { start: 0, end: 0, text: '' },
     NoteBody: { start: 0, end: 0, text: '' },
   }
@@ -973,8 +999,8 @@ function mergeFolderNames<T extends { path: string; displayName: string }>(left:
 }
 
 function editableCardContent(card: CardEntry) {
-  const { question, answer, hint, questionHighlights, answerHighlights, hintHighlights, folderPath, media } = card
-  return JSON.stringify({ question, answer, hint, questionHighlights, answerHighlights, hintHighlights, folderPath, media })
+  const { question, answer, hint, questionHighlights, answerHighlights, hintHighlights, hint2, hint2Highlights, folderPath, media } = card
+  return JSON.stringify({ question, answer, hint, questionHighlights, answerHighlights, hintHighlights, hint2, hint2Highlights, folderPath, media })
 }
 
 function preserveOmittedEditableFields(existing: CardEntry | NoteEntry | undefined, edited: CardEntry | NoteEntry, fields: string[]) {
@@ -1031,6 +1057,7 @@ function fieldNameKey(field: HighlightField) {
   if (field === 'CardQuestion') return 'cardQuestion'
   if (field === 'CardAnswer') return 'cardAnswer'
   if (field === 'CardHint') return 'cardHint'
+  if (field === 'CardHint2') return 'cardHint2'
   if (field === 'NoteTitle') return 'noteTitle'
   return 'noteBody'
 }

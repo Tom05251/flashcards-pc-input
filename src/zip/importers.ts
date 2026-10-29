@@ -4,6 +4,13 @@ import { emptyWorkspace, mergeImportedEntries, normalizeWorkspaceDraft } from '.
 import { safeZipPath } from '../security/files'
 import { deleteMediaBlob, saveMediaBlob } from '../storage/db'
 
+// JSZip 3.10 exposes this documented API but omits it on JSZipObject's types.
+declare module 'jszip' {
+  interface JSZipObject {
+    internalStream(type: 'uint8array'): JSZip.JSZipStreamHelper<Uint8Array>
+  }
+}
+
 export interface ImportPreview {
   workspace: WorkspaceDraft
   warnings: string[]
@@ -24,29 +31,28 @@ export async function importWorkspaceFile(file: File): Promise<ImportPreview> {
 
 async function importZip(file: File): Promise<ImportPreview> {
   if (file.size > 200 * 1024 * 1024) throw new Error('ZIP file is too large')
-  const zip = await JSZip.loadAsync(file, { checkCRC32: true })
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const entries = inspectZipDirectory(bytes)
+  // loadAsync(checkCRC32:true) inflates every entry concurrently before our
+  // size checks. Validate CRC and actual size in the bounded stream instead.
+  const deadline = Date.now() + 120_000
+  const zip = await JSZip.loadAsync(bytes, { checkCRC32: false })
+  if (Object.keys(zip.files).length !== entries.size) throw new Error('Ambiguous ZIP entries')
+  for (const [path, entry] of Object.entries(zip.files)) {
+    if (!entries.has(path) || (entry.unsafeOriginalName ?? path) !== path) throw new Error('Unsafe ZIP entry')
+  }
   const content = zip.file('content.json')
   if (!content) throw new Error('content.json was not found')
-  if (content.unsafeOriginalName && content.unsafeOriginalName !== 'content.json') throw new Error('Unsafe content.json path')
-  const contentBytes = await content.async('uint8array')
-  if (contentBytes.byteLength > 64 * 1024 * 1024) throw new Error('content.json is too large')
+  const contentBlob = await readZipEntry(content, entries.get('content.json')!, true, deadline)
+  const contentBytes = await contentBlob.arrayBuffer()
   const workspace = normalizeWorkspace(JSON.parse(decodeUtf8(contentBytes)))
   const referenced = new Set([...workspace.cards, ...workspace.notes].flatMap((item) => item.media.map((media) => media.fileName)))
   const assets: { path: string; blob: Blob }[] = []
-  const paths = new Set<string>(['content.json'])
-  let totalSize = contentBytes.byteLength
-  let count = 0
   for (const [path, entry] of Object.entries(zip.files)) {
     if (entry.dir || path === 'content.json') continue
-    const original = entry.unsafeOriginalName ?? path
-    const safe = safeZipPath(original)
-    if (!safe || safe !== path || paths.has(safe.toLowerCase())) throw new Error('Unsafe or duplicate ZIP entry')
-    paths.add(safe.toLowerCase())
-    if (++count > 5000) throw new Error('ZIP has too many files')
-    const blob = await entry.async('blob')
-    totalSize += blob.size
-    if (totalSize > 500 * 1024 * 1024) throw new Error('ZIP expanded size is too large')
-    if (referenced.has(safe)) assets.push({ path: safe, blob })
+    const keep = referenced.has(path)
+    const blob = await readZipEntry(entry, entries.get(path)!, keep, deadline)
+    if (keep) assets.push({ path, blob })
   }
   // Validate the whole archive first. Namespacing prevents a later import from
   // overwriting a blob referenced by a previous workspace or by a shared item.
@@ -65,6 +71,89 @@ async function importZip(file: File): Promise<ImportPreview> {
   }
   const warnings = [...referenced].filter((path) => !assets.some((asset) => asset.path === path)).map((path) => `Missing media: ${path}`)
   return { workspace, warnings }
+}
+
+interface ZipEntryInfo { size: number; crc: number }
+
+// Check original directory records before JSZip's filename map can overwrite
+// duplicates. Only single-disk ZIP32 STORE/DEFLATE archives fit our limits.
+function inspectZipDirectory(bytes: Uint8Array): Map<string, ZipEntryInfo> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const u16 = (offset: number) => view.getUint16(offset, true)
+  const u32 = (offset: number) => view.getUint32(offset, true)
+  let end = -1
+  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65_557); offset--) {
+    if (u32(offset) === 0x06054b50 && offset + 22 + u16(offset + 20) === bytes.length) { end = offset; break }
+  }
+  if (end < 0) throw new Error('Truncated ZIP directory')
+  const count = u16(end + 10), directorySize = u32(end + 12), directoryStart = u32(end + 16)
+  if (u16(end + 4) || u16(end + 6) || u16(end + 8) !== count || count === 0xffff || directorySize === 0xffffffff || directoryStart === 0xffffffff) throw new Error('Unsupported ZIP layout')
+  if (!count || count > 5000 || directoryStart + directorySize !== end) throw new Error('Invalid ZIP directory size or file count')
+  const entries = new Map<string, ZipEntryInfo>(), names = new Set<string>()
+  const spans: { start: number; end: number }[] = []
+  let cursor = directoryStart, totalSize = 0
+  for (let index = 0; index < count; index++) {
+    if (cursor + 46 > end || u32(cursor) !== 0x02014b50) throw new Error('Invalid ZIP directory record')
+    const flags = u16(cursor + 8), method = u16(cursor + 10), crc = u32(cursor + 16)
+    const compressed = u32(cursor + 20), size = u32(cursor + 24), nameLength = u16(cursor + 28)
+    const next = cursor + 46 + nameLength + u16(cursor + 30) + u16(cursor + 32), local = u32(cursor + 42)
+    if (next > end || u16(cursor + 34) || flags & 0x2041 || ![0, 8].includes(method) || compressed === 0xffffffff || size === 0xffffffff || local === 0xffffffff) throw new Error('Unsupported ZIP entry')
+    const rawName = bytes.subarray(cursor + 46, cursor + 46 + nameLength)
+    const path = decodeUtf8(rawName), directory = path.endsWith('/'), plain = directory ? path.slice(0, -1) : path
+    if (!plain || plain.length > 512 || plain.split('/').length > 32 || Array.from(plain).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || safeZipPath(plain) !== plain || names.has(plain.toLowerCase())) throw new Error('Unsafe or duplicate ZIP entry')
+    if (plain.split('/').at(-1)?.toLowerCase() === 'content.json' && path !== 'content.json') throw new Error('Ambiguous content.json entry')
+    names.add(plain.toLowerCase())
+    if (directory && (size || compressed || crc)) throw new Error('Invalid ZIP directory entry')
+    if (size > (path === 'content.json' ? 64 : 500) * 1024 * 1024 || (totalSize += size) > 500 * 1024 * 1024) throw new Error('ZIP expanded size is too large')
+    if (local + 30 > directoryStart || u32(local) !== 0x04034b50 || u16(local + 6) !== flags || u16(local + 8) !== method || u16(local + 26) !== nameLength) throw new Error('Mismatched ZIP local header')
+    const dataStart = local + 30 + nameLength + u16(local + 28)
+    if (dataStart + compressed > directoryStart || rawName.some((byte, offset) => byte !== bytes[local + 30 + offset])) throw new Error('Invalid ZIP entry bounds or name')
+    if (!(flags & 8) && (u32(local + 14) !== crc || u32(local + 18) !== compressed || u32(local + 22) !== size)) throw new Error('Mismatched ZIP local sizes')
+    if (method === 0 && compressed !== size) throw new Error('Invalid stored ZIP size')
+    spans.push({ start: local, end: dataStart + compressed })
+    entries.set(path, { size, crc })
+    cursor = next
+  }
+  if (cursor !== end || !entries.has('content.json')) throw new Error('Invalid ZIP content directory')
+  spans.sort((left, right) => left.start - right.start)
+  if (spans.some((span, index) => index > 0 && spans[index - 1].end > span.start)) throw new Error('Overlapping ZIP entries')
+  return entries
+}
+
+const crcTable = Uint32Array.from({ length: 256 }, (_, index) => {
+  let crc = index
+  for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0)
+  return crc >>> 0
+})
+
+function readZipEntry(entry: JSZip.JSZipObject, expected: ZipEntryInfo, keep: boolean, deadline: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const stream = entry.internalStream('uint8array')
+    let chunks: BlobPart[] = [], size = 0, crc = 0xffffffff, finished = false
+    const fail = (error: Error) => {
+      if (finished) return
+      finished = true
+      stream.pause()
+      chunks = []
+      clearTimeout(timer)
+      reject(error)
+    }
+    const timer = setTimeout(() => fail(new Error('ZIP read timed out')), Math.max(0, deadline - Date.now()))
+    stream.on('data', (chunk: Uint8Array) => {
+      if (finished) return
+      size += chunk.byteLength
+      if (size > expected.size || Date.now() > deadline) { fail(new Error('ZIP actual size or read time exceeded')); return }
+      for (const byte of chunk) crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff]
+      if (keep) chunks.push(chunk.slice().buffer)
+    }).on('error', (error: Error) => fail(error)).on('end', () => {
+      if (finished) return
+      if (size !== expected.size || ((crc ^ 0xffffffff) >>> 0) !== expected.crc) { fail(new Error('ZIP size or CRC mismatch')); return }
+      finished = true
+      clearTimeout(timer)
+      resolve(new Blob(chunks))
+      chunks = []
+    }).resume()
+  })
 }
 
 export function importJson(text: string): ImportPreview {
