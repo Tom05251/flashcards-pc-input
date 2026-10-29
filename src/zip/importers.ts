@@ -213,7 +213,14 @@ export function importCsv(text: string): ImportPreview {
       }
     }
     const tags = value('tags', 'tag')
-    if (tags !== undefined) record.tags = tags.split('|').filter(Boolean)
+    if (tags !== undefined) {
+      let decoded: unknown
+      try { decoded = JSON.parse(tags) } catch { /* Older CSV files use a pipe-separated field. */ }
+      if (Array.isArray(decoded)) {
+        if (!decoded.every((tag) => typeof tag === 'string')) throw new Error('Invalid CSV tags')
+        record.tags = decoded
+      } else record.tags = tags.split('|').filter(Boolean)
+    }
     for (const [key, column] of [
       ['questionHighlights', 'question_highlights'], ['answerHighlights', 'answer_highlights'], ['hintHighlights', 'hint_highlights'],
       ['hint2Highlights', 'hint2_highlights'], ['titleHighlights', 'title_highlights'], ['bodyHighlights', 'body_highlights'], ['media', 'media_json'],

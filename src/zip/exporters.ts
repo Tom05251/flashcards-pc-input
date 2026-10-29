@@ -68,7 +68,7 @@ function buildExchangeCsv(entries: (CardEntry | NoteEntry)[], columns: [string, 
       value = exchangeReplacer.call(record, key, value)
       if (value === undefined) return ''
       present.push(column)
-      if (key === 'tags') return (value as string[]).join('|')
+      if (key === 'tags') return JSON.stringify(value)
       return Array.isArray(value) ? JSON.stringify(value, exchangeReplacer) : String(value)
     })
     // Empty cells alone cannot distinguish omitted metadata from an explicit reset.
