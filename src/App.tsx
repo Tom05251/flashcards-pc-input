@@ -582,6 +582,11 @@ function WindowsLikePwa() {
     notify(t('export.ready', 'cards_sync_template.zip'))
   }
 
+  function downloadCsvTemplate() {
+    downloadBlob(mode === 'cards' ? buildCardCsv(workspace.cards) : buildNoteCsv(workspace.notes), mode === 'cards' ? 'cards_template.csv' : 'notes_template.csv')
+    notify(t('export.csvSpreadsheetWarning'))
+  }
+
   async function openFile(file: File | undefined, replace: boolean) {
     if (!file) return
     try {
@@ -644,7 +649,7 @@ function WindowsLikePwa() {
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? t('button.light') : t('button.dark')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'help')} onClick={() => setShowHelp(true)}>{t('button.help')}</button>
           <label className={withTutorialFocus('file-button', activeTutorialTargets, 'open-file')}>{t('button.open')}<input type="file" accept=".zip,.json,.csv" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void openFile(file, false) }} /></label>
-          <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(mode === 'cards' ? buildCardCsv(workspace.cards) : buildNoteCsv(workspace.notes), mode === 'cards' ? 'cards_template.csv' : 'notes_template.csv')}>{t('button.csvTemplate')}</button>
+          <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={downloadCsvTemplate}>{t('button.csvTemplate')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(buildWorkspaceJson(workspace), 'workspace.json')}>{t('button.jsonTemplate')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={downloadZipTemplate}>{t('button.zipTemplate')}</button>
           <button onClick={saveZip} className={withTutorialFocus('primary', activeTutorialTargets, 'zip-export')}>{t('button.saveZip')}</button>

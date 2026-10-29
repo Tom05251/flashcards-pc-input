@@ -208,6 +208,7 @@ export const en: TranslationMap = {
   'import.failed': 'The file could not be imported. Check its format and size. Your existing cards and notes were kept.',
   'export.missingMedia': 'Some media files were missing and were skipped: {0}',
   'export.ready': 'Created {0}.',
+  'export.csvSpreadsheetWarning': 'CSV keeps your original text. Spreadsheet apps may interpret cells starting with =, +, -, or @ as formulas, even when quoted. Import columns as text when using a spreadsheet.',
 }
 
 export const ja: TranslationMap = {
@@ -417,6 +418,7 @@ export const ja: TranslationMap = {
   'import.failed': 'ファイルを取り込めませんでした。形式と容量を確認してください。既存のカードとノートは保持されています。',
   'export.missingMedia': '一部メディアが見つからないためスキップしました: {0}',
   'export.ready': '{0}を作成しました。',
+  'export.csvSpreadsheetWarning': 'CSVは原文を保持します。表計算アプリでは、引用符で囲んでも =、+、-、@ で始まるセルが式として解釈される場合があります。表計算で開く際は列を文字列として読み込んでください。',
 }
 
 const generatedTranslations = generated as Record<string, TranslationMap>
