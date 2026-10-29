@@ -4,10 +4,10 @@ import { I18nProvider } from './i18n/I18nProvider'
 import { useI18n } from './i18n/useI18n'
 import { supportedLanguages } from './i18n/languages'
 import type { CardEntry, EntryMode, HighlightColor, MediaItem, NoteEntry, TextHighlight, WorkspaceDraft } from './models'
-import { emptyWorkspace, nextCardId, nextNoteId, normalizeWorkspaceDraft } from './models'
+import { emptyWorkspace, mergeImportedEntries, newRecordIdentity, nextCardId, nextNoteId, normalizeWorkspaceDraft } from './models'
 import { isAllowedMedia, mediaTypeFromMime, safeZipName } from './security/files'
-import { deleteMediaBlob, getMediaBlob, loadWorkspaceDraft, saveMediaBlob, saveWorkspaceDraft } from './storage/db'
-import { buildAndroidZip, buildCardCsv, buildWorkspaceJson, downloadBlob } from './zip/exporters'
+import { getMediaBlob, loadWorkspaceDraft, saveMediaBlob, saveWorkspaceDraft } from './storage/db'
+import { buildAndroidZip, buildCardCsv, buildNoteCsv, buildWorkspaceJson, downloadBlob } from './zip/exporters'
 import { importWorkspaceFile } from './zip/importers'
 
 type BeforeInstallPromptEvent = Event & {
@@ -48,6 +48,11 @@ function App() {
 function WindowsLikePwa() {
   const { t, language, setLanguage } = useI18n()
   const [workspace, setWorkspace] = useState<WorkspaceDraft>(() => emptyWorkspace())
+  const [storageState, setStorageState] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const [lastSavedAt, setLastSavedAt] = useState('')
+  const pendingSaveAnnouncement = useRef(false)
+  const savedMessage = t('status.autosaved')
+  const saveFailedMessage = t('storage.saveFailed')
   const [mode, setMode] = useState<EntryMode>('cards')
   const [theme, setTheme] = useState(() => {
     const requestedTheme = new URLSearchParams(window.location.search).get('theme')
@@ -83,11 +88,17 @@ function WindowsLikePwa() {
   const activeTutorialTargets = showTutorial ? tutorialTargets[tutorialStep] : []
 
   useEffect(() => {
+    let active = true
     loadWorkspaceDraft().then((saved) => {
-      if (!saved) return
-      setWorkspace(normalizeWorkspaceDraft(saved))
-      setMode(saved.uiState.activeTab)
-    })
+      if (!active) return
+      if (saved) {
+        setWorkspace(normalizeWorkspaceDraft(saved))
+        setMode(saved.uiState.activeTab)
+        setLastSavedAt(saved.updatedAt)
+      }
+      setStorageState('ready')
+    }).catch(() => { if (active) setStorageState('failed') })
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
@@ -104,8 +115,18 @@ function WindowsLikePwa() {
   }, [language])
 
   useEffect(() => {
-    saveWorkspaceDraft({ ...workspace, uiState: { ...workspace.uiState, activeTab: mode } }).catch((error) => notify(String(error), true))
-  }, [workspace, mode])
+    if (storageState !== 'ready') return
+    let active = true
+    saveWorkspaceDraft({ ...workspace, uiState: { ...workspace.uiState, activeTab: mode } }).then(() => {
+      if (!active) return
+      setLastSavedAt(new Date().toISOString())
+      if (pendingSaveAnnouncement.current) {
+        pendingSaveAnnouncement.current = false
+        setMessage({ text: savedMessage, persistent: false })
+      }
+    }).catch(() => { if (active) setMessage({ text: saveFailedMessage, persistent: true }) })
+    return () => { active = false }
+  }, [workspace, mode, storageState, savedMessage, saveFailedMessage])
 
   useEffect(() => {
     if (!message || message.persistent) return
@@ -355,7 +376,7 @@ function WindowsLikePwa() {
   }
 
   async function removeMedia(id: string) {
-    await deleteMediaBlob(id)
+    // Detaching a draft must not destroy a blob still used by the saved item or another item.
     setCardForm({ ...cardForm, media: cardForm.media.filter((item) => item.id !== id) })
     setNoteForm({ ...noteForm, media: noteForm.media.filter((item) => item.id !== id) })
   }
@@ -368,9 +389,11 @@ function WindowsLikePwa() {
 
   function createCurrent(continueEditing = false) {
     if (mode === 'cards') {
-      if (!cardForm.question.trim() || !cardForm.answer.trim()) return notify(t('validation.cardRequired'))
+      const existing = workspace.cards.find((item) => item.id === selectedItemId)
+      if (!existing && (!cardForm.question.trim() || !cardForm.answer.trim())) return notify(t('validation.cardRequired'))
       const id = selectedItemId ?? nextCardId(workspace.cards)
       const card: CardEntry = {
+        ...(existing ?? { ...newRecordIdentity(), isFavorite: false, srsLevel: 1, nextReviewAt: '', lastReviewedAt: '' }),
         id,
         question: cardForm.question,
         answer: cardForm.answer,
@@ -379,13 +402,10 @@ function WindowsLikePwa() {
         answerHighlights: cardForm.answerHighlights,
         hintHighlights: cardForm.hintHighlights,
         folderPath: selectedFolder,
-        isFavorite: false,
-        updatedAt: new Date().toISOString(),
-        srsLevel: 1,
-        nextReviewAt: '',
-        lastReviewedAt: '',
         media: cardForm.media,
       }
+      preserveOmittedEditableFields(existing, card, ['hint', 'questionHighlights', 'answerHighlights', 'hintHighlights'])
+      if (existing && editableCardContent(existing) !== editableCardContent(card)) card.updatedAt = new Date().toISOString()
       updateWorkspace({
         ...workspace,
         cards: selectedItemId == null
@@ -394,9 +414,11 @@ function WindowsLikePwa() {
       })
       setCardForm(blankCardForm())
     } else {
-      if (!noteForm.title.trim() || !noteForm.body.trim()) return notify(t('validation.noteRequired'))
+      const existing = workspace.notes.find((item) => item.id === selectedItemId)
+      if (!existing && (!noteForm.title.trim() || !noteForm.body.trim())) return notify(t('validation.noteRequired'))
       const id = selectedItemId ?? nextNoteId(workspace.notes)
       const note: NoteEntry = {
+        ...(existing ?? newRecordIdentity()),
         id,
         title: noteForm.title,
         body: noteForm.body,
@@ -405,6 +427,8 @@ function WindowsLikePwa() {
         folderPath: selectedFolder,
         media: noteForm.media,
       }
+      preserveOmittedEditableFields(existing, note, ['titleHighlights', 'bodyHighlights'])
+      if (existing && editableNoteContent(existing) !== editableNoteContent(note)) note.updatedAt = new Date().toISOString()
       updateWorkspace({
         ...workspace,
         notes: selectedItemId == null
@@ -414,7 +438,7 @@ function WindowsLikePwa() {
       setNoteForm(blankNoteForm())
     }
     setSelectedItemId(null)
-    if (continueEditing || fastEdit) notify(t('status.autosaved'))
+    if (continueEditing || fastEdit) pendingSaveAnnouncement.current = true
   }
 
   function clearCurrentForm() {
@@ -443,10 +467,10 @@ function WindowsLikePwa() {
       setCardForm({
         question: item.question,
         answer: item.answer,
-        hint: item.hint,
-        questionHighlights: item.questionHighlights,
-        answerHighlights: item.answerHighlights,
-        hintHighlights: item.hintHighlights,
+        hint: item.hint ?? '',
+        questionHighlights: item.questionHighlights ?? [],
+        answerHighlights: item.answerHighlights ?? [],
+        hintHighlights: item.hintHighlights ?? [],
         media: item.media,
       })
     } else {
@@ -455,8 +479,8 @@ function WindowsLikePwa() {
       setNoteForm({
         title: item.title,
         body: item.body,
-        titleHighlights: item.titleHighlights,
-        bodyHighlights: item.bodyHighlights,
+        titleHighlights: item.titleHighlights ?? [],
+        bodyHighlights: item.bodyHighlights ?? [],
         media: item.media,
       })
     }
@@ -548,8 +572,8 @@ function WindowsLikePwa() {
     } else {
       updateWorkspace({
         ...workspace,
-        cards: [...workspace.cards, ...preview.workspace.cards],
-        notes: [...workspace.notes, ...preview.workspace.notes],
+        cards: mergeImportedEntries(workspace.cards, preview.workspace.cards),
+        notes: mergeImportedEntries(workspace.notes, preview.workspace.notes),
         cardFolders: Array.from(new Set([...workspace.cardFolders, ...preview.workspace.cardFolders])),
         noteFolders: Array.from(new Set([...workspace.noteFolders, ...preview.workspace.noteFolders])),
         cardFolderNames: mergeFolderNames(workspace.cardFolderNames, preview.workspace.cardFolderNames),
@@ -578,6 +602,12 @@ function WindowsLikePwa() {
     setTutorialStep(nextStep)
   }
 
+  if (storageState !== 'ready') return <div className="desktop-shell panel">
+    <h1>{t('app.title')}</h1>
+    <p role="alert">{t(storageState === 'failed' ? 'storage.loadFailed' : 'storage.loading')}</p>
+    {storageState === 'failed' && <button onClick={() => window.location.reload()}>{t('storage.retry')}</button>}
+  </div>
+
   return (
     <div className="desktop-shell notranslate" translate="no">
       <header className="windows-top panel">
@@ -593,7 +623,7 @@ function WindowsLikePwa() {
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? t('button.light') : t('button.dark')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'help')} onClick={() => setShowHelp(true)}>{t('button.help')}</button>
           <label className={withTutorialFocus('file-button', activeTutorialTargets, 'open-file')}>{t('button.open')}<input type="file" accept=".zip,.json,.csv" onChange={(event) => openFile(event.target.files?.[0], false)} /></label>
-          <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(buildCardCsv(workspace.cards), 'cards_template.csv')}>{t('button.csvTemplate')}</button>
+          <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(mode === 'cards' ? buildCardCsv(workspace.cards) : buildNoteCsv(workspace.notes), mode === 'cards' ? 'cards_template.csv' : 'notes_template.csv')}>{t('button.csvTemplate')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(buildWorkspaceJson(workspace), 'workspace.json')}>{t('button.jsonTemplate')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={downloadZipTemplate}>{t('button.zipTemplate')}</button>
           <button onClick={saveZip} className={withTutorialFocus('primary', activeTutorialTargets, 'zip-export')}>{t('button.saveZip')}</button>
@@ -724,7 +754,7 @@ function WindowsLikePwa() {
 
       <footer className="windows-bottom panel">
         <span>{workspace.cards.length || workspace.notes.length ? t('status.count', workspace.cards.length, workspace.notes.length) : t('status.count.initial')}</span>
-        <span>{workspace.updatedAt ? t('status.lastSaved', new Date(workspace.updatedAt).toLocaleString()) : t('status.lastSaved.never')}</span>
+        <span>{lastSavedAt ? t('status.lastSaved', new Date(lastSavedAt).toLocaleString()) : t('status.lastSaved.never')}</span>
       </footer>
 
       {showHelp && <Modal title={t('help.title')} onClose={() => setShowHelp(false)}>
@@ -937,9 +967,33 @@ function resolveFolderName(names: { path: string; displayName: string }[], path:
 }
 
 function mergeFolderNames<T extends { path: string; displayName: string }>(left: T[], right: T[]): T[] {
-  const map = new Map(left.filter((item) => item.path).map((item) => [item.path, item]))
-  right.filter((item) => item.path).forEach((item) => map.set(item.path, item))
+  const map = new Map(left.map((item) => [item.path, item]))
+  right.forEach((item) => map.set(item.path, item))
   return Array.from(map.values())
+}
+
+function editableCardContent(card: CardEntry) {
+  const { question, answer, hint, questionHighlights, answerHighlights, hintHighlights, folderPath, media } = card
+  return JSON.stringify({ question, answer, hint, questionHighlights, answerHighlights, hintHighlights, folderPath, media })
+}
+
+function preserveOmittedEditableFields(existing: CardEntry | NoteEntry | undefined, edited: CardEntry | NoteEntry, fields: string[]) {
+  if (!existing) return
+  const record = edited as unknown as Record<string, unknown>
+  fields.forEach((field) => {
+    const value = record[field]
+    if (!Object.hasOwn(existing, field) && (value === '' || (Array.isArray(value) && value.length === 0))) Reflect.deleteProperty(record, field)
+  })
+  if (existing.sourceFields) {
+    const previous = existing as unknown as Record<string, unknown>
+    const changed = Object.keys(record).filter((key) => key !== 'sourceFields' && JSON.stringify(record[key]) !== JSON.stringify(previous[key]))
+    edited.sourceFields = [...new Set([...existing.sourceFields, ...changed])]
+  }
+}
+
+function editableNoteContent(note: NoteEntry) {
+  const { title, body, titleHighlights, bodyHighlights, folderPath, media } = note
+  return JSON.stringify({ title, body, titleHighlights, bodyHighlights, folderPath, media })
 }
 
 function buildFolderRows(paths: string[], expanded: Set<string>) {

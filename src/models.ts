@@ -24,6 +24,15 @@ export interface MediaItem {
 
 export interface CardEntry {
   id: number
+  sourceFields?: string[]
+  stableKey?: string
+  createdAt?: string
+  timestampOrigin?: string
+  hint2?: string
+  hint2Highlights?: TextHighlight[]
+  tags?: string[]
+  bookmarkFlags?: number
+  bookmarkLevel?: number
   cardId?: number
   question: string
   answer: string
@@ -51,6 +60,15 @@ export interface CardEntry {
 
 export interface NoteEntry {
   id: number
+  sourceFields?: string[]
+  stableKey?: string
+  createdAt?: string
+  updatedAt?: string
+  timestampOrigin?: string
+  lastReviewedAt?: string
+  tags?: string[]
+  bookmarkFlags?: number
+  bookmarkLevel?: number
   title: string
   body: string
   titleHighlights: TextHighlight[]
@@ -70,6 +88,8 @@ export interface NoteEntry {
 export interface FolderNameItem {
   path: string
   displayName: string
+  createdAtEpochMillis?: number
+  updatedAtEpochMillis?: number
 }
 
 export interface WorkspaceUiState {
@@ -104,8 +124,42 @@ export const emptyWorkspace = (): WorkspaceDraft => ({
   updatedAt: new Date().toISOString(),
 })
 
-export const nextCardId = (cards: CardEntry[]) => Math.max(0, ...cards.map((card) => card.id)) + 1
-export const nextNoteId = (notes: NoteEntry[]) => Math.max(0, ...notes.map((note) => note.id)) + 1
+function nextPositiveId(entries: { id: number }[]) {
+  const used = new Set(entries.map((entry) => entry.id).filter((id) => Number.isInteger(id) && id > 0 && id <= 2147483647))
+  let largest = 0
+  used.forEach((id) => { largest = Math.max(largest, id) })
+  if (largest < 2147483647) return largest + 1
+  for (let candidate = 1; candidate <= 2147483647; candidate += 1) if (!used.has(candidate)) return candidate
+  throw new Error('No unused positive identifier is available')
+}
+
+export const nextCardId = (cards: CardEntry[]) => nextPositiveId(cards)
+export const nextNoteId = (notes: NoteEntry[]) => nextPositiveId(notes)
+
+export function newRecordIdentity() {
+  const now = new Date().toISOString()
+  return { stableKey: `pwa-input:${crypto.randomUUID()}`, createdAt: now, updatedAt: now, timestampOrigin: 'native' }
+}
+
+export function mergeImportedEntries<T extends { id: number; stableKey?: string; sourceFields?: string[] }>(current: T[], incoming: T[]): T[] {
+  const result = [...current]
+  for (const entry of incoming) {
+    const match = entry.stableKey ? result.findIndex((existing) => existing.stableKey === entry.stableKey) : -1
+    if (match >= 0) {
+      const updates = { ...entry } as T & Record<string, unknown>
+      const fields = entry.sourceFields
+      if (fields && !fields.some((field) => ['folderPath', 'folder_path', 'folder'].includes(field))) Reflect.deleteProperty(updates, 'folderPath')
+      if (fields && !fields.some((field) => ['media', 'imagePath', 'image_path', 'audioPath', 'audio_path'].includes(field))) Reflect.deleteProperty(updates, 'media')
+      const previous = result[match]
+      result[match] = { ...previous, ...updates, id: previous.id,
+        sourceFields: [...new Set([...(previous.sourceFields ?? Object.keys(previous)), ...(fields ?? Object.keys(entry))])] }
+    } else {
+      const id = result.some((existing) => existing.id === entry.id) ? nextPositiveId(result) : entry.id
+      result.push({ ...entry, id, ...('cardId' in entry ? { cardId: id } : {}) })
+    }
+  }
+  return result
+}
 
 export function cleanWorkspaceForExport(draft: WorkspaceDraft): WorkspaceData {
   const normalized = normalizeWorkspaceDraft(draft)
@@ -122,8 +176,8 @@ export function cleanWorkspaceForExport(draft: WorkspaceDraft): WorkspaceData {
 }
 
 export function normalizeWorkspaceDraft(draft: WorkspaceDraft): WorkspaceDraft {
-  const cardFolders = normalizeFolderPaths(draft.cardFolders)
-  const noteFolders = normalizeFolderPaths(draft.noteFolders)
+  const cardFolders = normalizeFolderPaths([...draft.cardFolders, ...draft.cards.map((card) => card.folderPath)])
+  const noteFolders = normalizeFolderPaths([...draft.noteFolders, ...draft.notes.map((note) => note.folderPath)])
   return {
     ...draft,
     cards: draft.cards.map((card) => ({ ...card, folderPath: normalizeItemFolderPath(card.folderPath, cardFolders) })),
@@ -140,20 +194,23 @@ export function normalizeWorkspaceDraft(draft: WorkspaceDraft): WorkspaceDraft {
 }
 
 function normalizeFolderPaths(paths: string[]) {
-  return Array.from(new Set(paths.filter((path) => path && !isPseudoUncategorizedPath(path))))
+  const result = new Set<string>()
+  for (const path of paths) {
+    let parent = ''
+    for (const segment of (path ?? '').split('/').map((part) => part.trim()).filter(Boolean)) {
+      parent = parent ? `${parent}/${segment}` : segment
+      result.add(parent)
+    }
+  }
+  return [...result]
 }
 
 function normalizeFolderNames(names: FolderNameItem[], folders: string[]) {
   const folderSet = new Set(folders)
-  return names.filter((item) => folderSet.has(item.path) && !isPseudoUncategorizedPath(item.path))
+  return names.filter((item) => item.path === '' || folderSet.has(item.path))
 }
 
 function normalizeItemFolderPath(path: string, folders: string[]) {
-  if (!path || isPseudoUncategorizedPath(path)) return ''
-  const hasFolder = folders.some((folder) => path === folder || path.startsWith(`${folder}/`))
-  return hasFolder ? path : ''
-}
-
-function isPseudoUncategorizedPath(path: string) {
-  return path === '未分類' || path === 'Uncategorized'
+  const normalized = (path ?? '').split('/').map((part) => part.trim()).filter(Boolean).join('/')
+  return normalized && folders.includes(normalized) ? normalized : ''
 }
