@@ -26,7 +26,7 @@ for (const required of ['index.html', 'manifest.webmanifest', '.js', '.css']) {
 if (!index.includes('manifest.webmanifest')) fail('index.html does not link manifest.webmanifest')
 if (manifest.display !== 'standalone') fail('manifest display must be standalone')
 if (!manifest.start_url) fail('manifest start_url is missing')
-if (manifest.id !== '.') fail('Stable installed app identity is missing')
+if (manifest.id !== undefined) fail('Keep the legacy start_url-derived identity; relative explicit IDs can resolve to the origin root')
 
 const languagesSource = fs.readFileSync(path.resolve(__dirname, '..', 'src/i18n/languages.ts'), 'utf8')
 const languages = [...languagesSource.matchAll(/\{ code: '([^']+)'/g)].map(match => match[1])

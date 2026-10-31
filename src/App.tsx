@@ -5,7 +5,7 @@ import { I18nProvider } from './i18n/I18nProvider'
 import { useI18n } from './i18n/useI18n'
 import { supportedLanguages } from './i18n/languages'
 import type { CardEntry, EntryMode, HighlightColor, MediaItem, NoteEntry, TextHighlight, WorkspaceDraft } from './models'
-import { emptyWorkspace, mergeImportedEntries, newRecordIdentity, nextCardId, nextNoteId, normalizeWorkspaceDraft } from './models'
+import { emptyWorkspace, isSafeTextHighlight, mergeImportedEntries, newRecordIdentity, nextCardId, nextNoteId, normalizeWorkspaceDraft } from './models'
 import { isAllowedMedia, mediaTypeFromMime, safeZipName } from './security/files'
 import { getMediaBlob, loadWorkspaceSnapshot } from './storage/db'
 import type { StagedMedia } from './storage/db'
@@ -986,8 +986,8 @@ function WindowsLikePwa() {
         {highlightModal.items.length
           ? <div className="highlight-list">{highlightModal.items.map((item, index) => (
             <article key={`${highlightModal.field}-${index}`}>
-              <strong>{t(`color.${item.color.toLowerCase()}`)}</strong>
-              <span>{item.text}</span>
+              <strong>{isSafeTextHighlight(item) ? t(`color.${item.color.toLowerCase()}`) : t('highlight.needsReview')}</strong>
+              <span>{typeof item?.text === 'string' ? item.text : ''}</span>
               <button className="danger" onClick={() => {
                 removeHighlight(highlightModal.field, index)
                 setHighlightModal({ ...highlightModal, items: highlightModal.items.filter((_, itemIndex) => itemIndex !== index) })
@@ -1031,6 +1031,7 @@ function HighlightInputBlock({ label, value, onChange, field, t, onHighlight, on
     </label>
     <HighlightToolbar field={field} t={t} onHighlight={onHighlight} onClearHighlights={onClearHighlights} onListHighlights={onListHighlights} highlights={highlights.length} activeTutorialTargets={activeTutorialTargets} />
     <SelectionSummary t={t} selection={selection} highlights={highlights.length} />
+    {highlights.some((item) => !isSafeTextHighlight(item)) && <span className="selection-hint" role="status">{t('highlight.needsReview')}</span>}
   </section>
 }
 
@@ -1307,6 +1308,7 @@ function isHighlightAligned(value: string, highlight: TextHighlight) {
 
 function renderHighlightedText(value: string, highlights: TextHighlight[], t: T) {
   const valid = highlights
+    .filter(isSafeTextHighlight)
     .map((item, index) => ({ ...item, index }))
     .filter((item) => item.start >= 0 && item.end > item.start && item.end <= value.length)
     .sort((a, b) => a.start - b.start)
@@ -1325,6 +1327,7 @@ function renderHighlightedText(value: string, highlights: TextHighlight[], t: T)
 function applyHighlight(value: string, highlights: TextHighlight[], next: TextHighlight) {
   const pieces: TextHighlight[] = []
   highlights.forEach((item) => {
+    if (!isSafeTextHighlight(item)) { pieces.push(item); return }
     if (item.end <= next.start || item.start >= next.end) {
       pieces.push(item)
       return
@@ -1356,6 +1359,7 @@ function adjustHighlightsForEdit(previous: string, next: string, highlights: Tex
   const delta = inserted - removed
   const changedEnd = previousSuffix
   const adjusted = highlights.map((item) => {
+    if (!isSafeTextHighlight(item)) return item
     if (item.end <= prefix) return item
     if (item.start >= changedEnd) {
       return { ...item, start: item.start + delta, end: item.end + delta }
@@ -1368,7 +1372,9 @@ function adjustHighlightsForEdit(previous: string, next: string, highlights: Tex
 }
 
 function normalizeHighlights(value: string, highlights: TextHighlight[]) {
+  const invalid = highlights.filter((item) => !isSafeTextHighlight(item))
   const normalized = highlights
+    .filter(isSafeTextHighlight)
     .map((item) => ({
       ...item,
       start: clamp(Math.min(item.start, item.end), 0, value.length),
@@ -1387,7 +1393,7 @@ function normalizeHighlights(value: string, highlights: TextHighlight[]) {
     }
     merged.push(item)
   })
-  return merged
+  return [...merged, ...invalid]
 }
 
 function clamp(value: number, min: number, max: number) {

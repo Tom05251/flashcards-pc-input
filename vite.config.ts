@@ -7,7 +7,7 @@ import { translations } from './src/i18n/translations'
 import { supportedLanguages } from './src/i18n/languages'
 
 const manifest: Partial<ManifestOptions> = {
-  id: '.', name: 'Flashcards Notes Deluxe PC Input PWA', short_name: 'PC Input PWA',
+  name: 'Flashcards Notes Deluxe PC Input PWA', short_name: 'PC Input PWA',
   description: 'PC browser input tool that creates ZIP/JSON/CSV files for the Android flashcards app.',
   theme_color: '#121c2a', background_color: '#0d1420', display: 'standalone',
   start_url: '.', scope: '.', lang: 'en', dir: 'ltr',

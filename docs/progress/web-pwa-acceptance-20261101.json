@@ -1,0 +1,654 @@
+{
+  "schema": "web-pwa-final-local-prepublication-gate-v1",
+  "status": "LOCAL_PREPUBLICATION_ACCEPTED_PENDING_OWNER_APPROVAL",
+  "createdUtc": "2026-10-31T17:12:59.712Z",
+  "repository": "Tom05251/flashcards-pc-input",
+  "branch": "codex/android-v14-roundtrip-20261030",
+  "baseline": "e4587584474eb4a98578815a50aadc6c4f3d2e67",
+  "authorization": {
+    "normalWorkBranchPush": true,
+    "publicDeploy": false,
+    "mainOrGhPagesMerge": false,
+    "playUpload": false
+  },
+  "translation": {
+    "localeCount": 39,
+    "reviewedOwnKeysEach": 228,
+    "totalDecisions": 8892,
+    "totals": {
+      "keep": 2448,
+      "repair": 3181,
+      "add": 3263
+    },
+    "ownFallback": 0,
+    "placeholderDefects": 0,
+    "activeUiKeys": 201,
+    "manifestOnlyExtraKey": 1,
+    "unchangedOutOfScopeLegacyValues": 3600,
+    "meaningStatus": "SEMANTIC_REVIEWED",
+    "structureStatus": "VERIFIED",
+    "criticalBrowserLocaleCount": 39,
+    "criticalImageLocaleCount": 39,
+    "mainMatrixObservedPairs": 3783,
+    "mainMatrixPngCount": 276,
+    "tutorialStepsActuallyVisited": 585,
+    "allKeyAllStateScreenCoverage": false
+  },
+  "currentFinalDelta": {
+    "stableFiles": [
+      "src/i18n/translations.ts",
+      "src/i18n/generated.json",
+      "src/i18n/I18nProvider.tsx",
+      "src/i18n/languages.ts",
+      "src/i18n/context.ts",
+      "src/i18n/useI18n.ts",
+      "src/storage/db.ts",
+      "src/storage/persistence.ts",
+      "src/storage/preferences.ts",
+      "src/security/files.ts",
+      "src/zip/exporters.ts",
+      "src/main.tsx"
+    ],
+    "unchangedFunctions": [
+      "App",
+      "updateWorkspace",
+      "notify",
+      "retrySave",
+      "installAppToPc",
+      "selectFolder",
+      "startColumnResize",
+      "addFolder",
+      "renameFolder",
+      "remapItem",
+      "deleteFolder",
+      "setModeAndTab",
+      "addMedia",
+      "removeMedia",
+      "updateMediaCaption",
+      "createCurrent",
+      "clearCurrentForm",
+      "deleteCurrentItem",
+      "selectItem",
+      "moveSelected",
+      "addHighlight",
+      "highlightsFor",
+      "clearHighlights",
+      "removeHighlight",
+      "rememberSelection",
+      "showHighlights",
+      "saveZip",
+      "downloadZipTemplate",
+      "downloadCsvTemplate",
+      "exportCsv",
+      "openFile",
+      "cancelImport",
+      "confirmImport",
+      "closeTutorial",
+      "goTutorialStep",
+      "CardEditor",
+      "NoteEditor",
+      "HighlightToolbar",
+      "SelectionSummary",
+      "MediaPreview",
+      "MediaList",
+      "Modal",
+      "cardFormFrom",
+      "noteFormFrom",
+      "describeImport",
+      "blankCardForm",
+      "blankNoteForm",
+      "blankSelections",
+      "selectionFromElement",
+      "resolveFolderName",
+      "mergeFolderNames",
+      "editableCardContent",
+      "preserveOmittedEditableFields",
+      "editableNoteContent",
+      "buildFolderRows",
+      "parentPathOf",
+      "toggleExpanded",
+      "fieldNameKey",
+      "languageNameForUi",
+      "withTutorialFocus",
+      "armPwaBackGuard",
+      "isPwaGuardHash",
+      "isStandaloneDisplay",
+      "isHighlightAligned",
+      "clamp",
+      "loadColumnWidths",
+      "saveBlobWithPicker",
+      "moveByIdInFolder",
+      "isItemInFolder"
+    ],
+    "allLifecycleCallbacksUnchanged": true,
+    "changedRenderer": "Invalid saved highlights display Review and remain intact until explicit removal; valid six-field native undo/edit/save regression verified.",
+    "changedImporter": "Only unsafe known UI field shapes are rejected; four signed-v14 exchange artifacts remain canonically identical with the accepted parser.",
+    "changedCss": "Folder, destination, fast-edit and media filename containment; actual 39-locale zoom and media controls reaccepted.",
+    "manifestIdentity": "Legacy start_url-derived identity retained; final manifests omit the incorrect relative explicit id.",
+    "normalUiProofReuse": "Current translation hashes and screen meanings retained; valid-data UI consumers unchanged; schema/recovery/CSS deltas have separate actual acceptance."
+  },
+  "pwa": {
+    "functionalAssertions": 12,
+    "rawAggregateBadgeTrusted": false,
+    "bootstrapAdjudication": "QA-only injected opaque-document initialization resolved independently; original error URL/stack not retroactively invented.",
+    "offlineLocaleCount": 39,
+    "actualParsedIdentityLocaleCount": 39,
+    "dirtyOtherTabUpdateProtected": true,
+    "nativeChromeStandaloneVerified": true,
+    "windowsNativeSaveDialogOperated": false,
+    "normalLegacyCloseAndBrowserReopenVerified": true,
+    "normalLegacyUpdateManualActivationMessages": 0
+  },
+  "android": {
+    "code": 14,
+    "preservedAab": "C:/Users/minor/AndroidStudioProjects/FlashcardsAndroidStarter/app/user/release/app-user-release.aab",
+    "sha256": "8675474db4527b5058e3c3474913872106e4b71360dcce26f5247a24f37510de",
+    "sourceHead": "096fd6726d59199fadb585b217fd5a8c362e6a95",
+    "rebuild": false,
+    "playUpload": false,
+    "formalZipRoundtrip": true,
+    "originalQaDataMediaSettingsProtected": true,
+    "avdClosedAndRestored": true,
+    "unknownExtensionScope": "Web retains opaque item/folder fields through stable-key return merge; Android arbitrary-extension serialization is not claimed."
+  },
+  "unverified": [
+    "Native Windows save-destination chooser interaction; picker contract with a real FileSystemFileHandle, cancellation and browser-download fallback were verified.",
+    "Physical speaker/Bluetooth output; actual HTMLMediaElement playback progression and pause were verified.",
+    "Every key in every UI state; meaning/structure cover all 228 keys per locale, while actual screen coverage is explicitly scoped.",
+    "Other OS/browser installation workflows beyond the verified Windows Chrome standalone flow."
+  ],
+  "guaranteeBoundary": "Forced termination cannot guarantee data that has not committed. No app-data deletion/reset, force push, public deployment or Android rebuild was performed.",
+  "evidenceRoot": "C:\\Users\\minor\\AndroidStudioProjects\\FlashcardsAndroidStarter\\.gradle-session\\web-pwa-39-20261031T141213Z",
+  "evidence": [
+    {
+      "file": "en-meaning-review-final.json",
+      "sha256": "5a9d12db9d308b711792b4c013ba8e473d48132dc7de94af3ab4167e13c7cd1c",
+      "status": "SEMANTIC_REVIEWED_BROWSER_GATE_SEPARATE"
+    },
+    {
+      "file": "locale-integration.json",
+      "sha256": "e9b12da779d1dc6ebe276a915f699963e7fa66df47a0720cc5e339b81b97568a",
+      "status": "SEMANTIC_REVIEWED_UI_PENDING"
+    },
+    {
+      "file": "structure-final.json",
+      "sha256": "0890acf724d1f8f3e3f5823fcc32e7c4c9368033ac243fdedfffaac2f2f7355f",
+      "status": "STRUCTURE_VERIFIED_MEANING_AND_UI_SEPARATE"
+    },
+    {
+      "file": "storage/handoff.json",
+      "sha256": "c3ac0e8b26f209f8ddbac63eb31e03e1f29ad3c325aa12cff2e49de222ef50ea",
+      "status": "DEPENDENCY_EVIDENCE"
+    },
+    {
+      "file": "ui-functional-final-result.json",
+      "sha256": "a4cbf69116d9a9baab65218e830434dc7daf435b75f7fc0c42b6bb74f1ab39f7",
+      "status": "PASS"
+    },
+    {
+      "file": "late-acceptance-result.json",
+      "sha256": "5134fb584fea3ba0b800a007085781e72b50d53ab98cce2d0cb3c48e44f97e84",
+      "status": "PASS"
+    },
+    {
+      "file": "folder-merge-acceptance.json",
+      "sha256": "2accf0b30522b8f5aa723c3b64a99bf5fb31784637da56172b6eb78e6a27df8a",
+      "status": "PASS"
+    },
+    {
+      "file": "final-review/observed-commit/result.json",
+      "sha256": "dae3f908e98b53a1a79e8bb166aa599b2ffdb57c852f870b2293c5a3d7b42879",
+      "status": "TARGETED_OBSERVER_CHECKS_PASS"
+    },
+    {
+      "file": "ui39/acceptance-matrix.json",
+      "sha256": "a130ca2870a4143b26169cb39561720cf23211ce12525ed9a52ccf826f73077a",
+      "status": "ALL39_DECLARED_CRITICAL_BROWSER_UI_AND_VISIBLE_IMAGE_SCOPE_PASS"
+    },
+    {
+      "file": "ui39/visual-reviews-final.json",
+      "sha256": "e9bab36758093ce75277627292bc87fda40b4e366e3c579f4e8f5729091a7ad2",
+      "status": "DEPENDENCY_EVIDENCE"
+    },
+    {
+      "file": "ui39/ready4-to-ready5-manifest-id-applicability.json",
+      "sha256": "086726ae510d26e75caca039e9ef00a443769ea0c9d0199dc9b205fddf67e52e",
+      "status": "SAME_UI_CONSUMERS_COMPILED_BYTES_DICTIONARIES_CSS_APPLICABLE"
+    },
+    {
+      "file": "final-review/zoom-destination-repair/result.json",
+      "sha256": "cb7c71d9d9fc9d8f23e30ad730d1ae72ec50de9088a7c9071e112d43cdc95d61",
+      "status": "PASS_39_CHANGED_CONTROL_NATIVE125_VISUAL_PENDING"
+    },
+    {
+      "file": "final-review/zoom-destination-repair/visual-review.json",
+      "sha256": "ff69b34591c3f6d39f2c8d18ebbe6fe6b8f8eea4a61da8bd58c1e0ec8f98032b",
+      "status": "PASS_TARGETED_39_NATIVE125_WITH_REPRESENTATIVE_ACTUAL_VISUAL_REVIEW"
+    },
+    {
+      "file": "final-review/media-playback/acceptance-ready6.json",
+      "sha256": "548b4f99be49b7ebdd9a8d8b8b1a2589a7b92aebd96153609bba29dd8701f49e",
+      "status": "THREE_TARGETED_MEDIA_CONTRACTS_AND_ACTUAL_VISIBLE_IMAGE_SCOPE_PASS"
+    },
+    {
+      "file": "final-review/import-final-branches/acceptance-ready6.json",
+      "sha256": "e9513749cc86fb0d7e04af1da91c7412f983aadfcc03ab727d2a67b5d88d6435",
+      "status": "TWO_DECLARED_IMPORT_BRANCHES_AND_ACTUAL_VISIBLE_IMAGE_SCOPE_PASS"
+    },
+    {
+      "file": "roundtrip/roundtrip-final.json",
+      "sha256": "1178801a4947c150cce102aba088b2f92d843bb9c50fc1fdb3599e218c315d0c",
+      "status": "PASS_LOCAL_SCOPED_FORMAL_ZIP_ROUNDTRIP_AND_JSON_CSV_BOUNDARIES"
+    },
+    {
+      "file": "roundtrip/android-restored-closed.json",
+      "sha256": "b0beb42938759a0bfe3000f2532b1d27d1fbb945a029b1e016ce8fac0de3aed6",
+      "status": "DEPENDENCY_EVIDENCE"
+    },
+    {
+      "file": "roundtrip/historical-proof-reuse.json",
+      "sha256": "44835205620958f3139b13db01000aca238d42a3095ab056bd7214efe80b35c0",
+      "status": "DEPENDENCY_EVIDENCE"
+    },
+    {
+      "file": "final-review/final-install-ready5/result.json",
+      "sha256": "dde9ddd38b70de6558d45f4c5b9b36afc628db48c92b706f0b68bfe3f7342b69",
+      "status": "PASS_FINAL_NATIVE_PWA_INSTALL_LAUNCH_STANDALONE"
+    },
+    {
+      "file": "pwa-acceptance-result.json",
+      "sha256": "34b8e12258333131cfa5ec590f67119dcd3e379c7c966c27a2a3b3de368087ba",
+      "status": "TWELVE_ASSERTIONS_REUSED_RAW_BADGE_REJECTED_SEE_BOOTSTRAP_ADJUDICATION"
+    },
+    {
+      "file": "final-review/pwa-bootstrap/independent-adjudication-final.json",
+      "sha256": "8fe54c6fdfa6a147501cd8fcea8601d5e594b9081d387f3e0a9e204584ffc22d",
+      "status": "QA_ONLY_BOOTSTRAP_BOUNDARY_ADJUDICATED_RESOLVED"
+    },
+    {
+      "file": "final-review/legacy-normal-update/normal-update-final.json",
+      "sha256": "71ed6154049ed026c1fd4482134ff37055f681ca4af452ecd77f49fcb4966c23",
+      "status": "PASS_LOCAL_LEGACY_NORMAL_CLOSE_REOPEN_UPGRADE"
+    },
+    {
+      "file": "release/archive-verification.json",
+      "sha256": "7bdc4cc47b92e5d3fa89f92ff32052db7f4487c8d1c537e421af0e0ae513ba93",
+      "status": "ZIP_CRC_AND_EVERY_FILE_SHA_VERIFIED"
+    },
+    {
+      "file": "final-owned-process-cleanup.json",
+      "sha256": "f46b6c2319f230f82722a52900c5a372dea07463db508190c488885e52f1d1ea",
+      "status": "DEPENDENCY_EVIDENCE"
+    },
+    {
+      "file": "final-review/malformed-highlight/importer-host-guards.json",
+      "sha256": "e022bc41694a6cd9d0586780480b14337d475697f56d8491184651f28677aeae",
+      "status": "TARGETED_HOST_GUARDS_PASS"
+    },
+    {
+      "file": "final-review/malformed-highlight/acceptance-ready7.json",
+      "sha256": "1cc42d604d95c24f28da86b8fbc04fe1407330f801ff3634356ff6b51dad2a43",
+      "status": "SIX_MALFORMED_REJECTIONS_FOUR_VALID_COMPATIBILITY_AND_VISIBLE_IMAGE_SCOPE_PASS"
+    },
+    {
+      "file": "final-review/highlight-recovery/result.json",
+      "sha256": "8344923648b22e5113dea53b57971738e9545f54ee083c832eb6da92be744474",
+      "status": "PASS_EXISTING_UNSAFE_HIGHLIGHT_RECOVERY_AND_VALID_SIX_FIELD_NATIVE_REGRESSION"
+    },
+    {
+      "file": "final-review/highlight-recovery/visual-review.json",
+      "sha256": "847f045df0f29020d88ab93a8405d73446c568ebdc58cf93f1860705bacedc8b",
+      "status": "PASS_TARGETED_EXISTING_LIBRARY_RECOVERY_AND_VALID_REGRESSION"
+    }
+  ],
+  "source": [
+    {
+      "path": "src/i18n/translations.ts",
+      "sha256": "0909b0f41681ba685ac5efbb3574eb1bc43b98948566afe74196d59ac4f90322"
+    },
+    {
+      "path": "src/i18n/generated.json",
+      "sha256": "e397e6324407ee9b1b199204982d2f325a4470863d7df97748a7940c358b7ac2"
+    },
+    {
+      "path": "src/i18n/I18nProvider.tsx",
+      "sha256": "c101eefb7bfe561ccfcc9db546b5bc889c76e5b64a86cbcdd81a5852bdfcd385"
+    },
+    {
+      "path": "src/i18n/languages.ts",
+      "sha256": "9cc6057299fc0cd228a90a343ec889052e98ea0dd8e0806244165e3fb80a5cc5"
+    },
+    {
+      "path": "src/i18n/context.ts",
+      "sha256": "f0fc81ef4769dcd5ed0685a5db2c5b5d336c83ed40b2504a35007d659d79d68d"
+    },
+    {
+      "path": "src/i18n/useI18n.ts",
+      "sha256": "34866bff2148a39bdc17075be84fc77169e92597796b683648fbc0bcf4d7f235"
+    },
+    {
+      "path": "src/storage/db.ts",
+      "sha256": "b91f6f8bcd19a90a0d920177092e6a7063fb435b0d9264c4c479291417406484"
+    },
+    {
+      "path": "src/storage/persistence.ts",
+      "sha256": "7a63751e3e0faba991acdc3168e20097cf9d1db0720324f24383b5baa4632995"
+    },
+    {
+      "path": "src/storage/preferences.ts",
+      "sha256": "8dba46154ed1a8eaa8f538e0e83b9a687d369212a64917822a119a002ec03299"
+    },
+    {
+      "path": "src/security/files.ts",
+      "sha256": "eac1e57588185147d7582a712c2c8d79c7a276c37d0e9573fe2faa522fd3aa15"
+    },
+    {
+      "path": "src/zip/exporters.ts",
+      "sha256": "a70aed4c9e6965bb3a63900df692cd36ad3145a50076c46fbc7369fcba22f3d4"
+    },
+    {
+      "path": "src/main.tsx",
+      "sha256": "b3f023da133154adff448b24c256c554072536939e52291490a6128a9cfc82f7"
+    },
+    {
+      "path": "src/models.ts",
+      "sha256": "b8356221f8143fdfdff0649d148607a012049f4ee2ecf7eb4f1ffa81e6458a3f"
+    },
+    {
+      "path": "src/App.tsx",
+      "sha256": "f5d512c4c236cdd73055a27e09941e8bf621c77992584ff09e09cc5c0bf8fe3d"
+    },
+    {
+      "path": "src/zip/importers.ts",
+      "sha256": "2c897e6b8fdf8a831fc59bff971300bde233fdb6d0b1c7cdafdd39d5bacc0674"
+    },
+    {
+      "path": "src/styles.css",
+      "sha256": "e1f59c0e0c79a6dba4f129d0fe62dce98f933cbb75da1cca2b03f315902c6629"
+    },
+    {
+      "path": "vite.config.ts",
+      "sha256": "892fc04ff356090b3d888d70de374f05b979e503e055689525efb267b4e68f06"
+    },
+    {
+      "path": "scripts/verify-translations.cjs",
+      "sha256": "6b2a1d377aa4053940f37139ea82911f499dc2f2330f005550fa88d2f7d314c9"
+    },
+    {
+      "path": "scripts/verify-offline-build.cjs",
+      "sha256": "80947a5de6265725418f85da84c9030f6deb57a454444d34a34fa163fd559121"
+    },
+    {
+      "path": "package.json",
+      "sha256": "60028de42742d1a16ba1ea499a38bbc47ebde7793468b4d4426dd256190d5d50"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "8bd1b0e75c3f765838a2764410d16480fbb4611a20be68f1f40d46a505f7c125"
+    }
+  ],
+  "dist": [
+    {
+      "path": "assets/index-D7-Tz2GR.js",
+      "sha256": "7ffd2c9e8f2116a2d7d06be5b7238e5b11d7b6a91c695781c42184411b9bc3ed",
+      "bytes": 1412857
+    },
+    {
+      "path": "assets/index-vS4FnlDI.css",
+      "sha256": "d48438b08edcfd92e86c74d15f1ac83f16699a49f9959c6c8ade41506a61a4db",
+      "bytes": 13788
+    },
+    {
+      "path": "assets/workbox-window.prod.es5-Bd17z0YL.js",
+      "sha256": "17bcc17d60dc78f927834b880c39649b03af46fd1f5cdbb8c42c5ae2b515dce9",
+      "bytes": 5653
+    },
+    {
+      "path": "favicon.svg",
+      "sha256": "61bc9a161de58248288e6905425d7180f0624c2865007b97d763fdac12043a66",
+      "bytes": 9522
+    },
+    {
+      "path": "icons.svg",
+      "sha256": "7ca2d67c9c3aebf50cdc8709ee8aacf8cdb8cc7ea6325ea94939caef5da1c53d",
+      "bytes": 5055
+    },
+    {
+      "path": "icons/icon-192.png",
+      "sha256": "8b19812adfb8b482f68acc1998ed30eea5bbebd49c46daae5ce0ffda2eef2f19",
+      "bytes": 1624
+    },
+    {
+      "path": "icons/icon-512.png",
+      "sha256": "2e815c3aec198958cca255e41b55290d051bdce17775708a6484b7eb5511072b",
+      "bytes": 5582
+    },
+    {
+      "path": "icons/icon.svg",
+      "sha256": "1d66feea5d9d0964eafe7a260523ee8bf48833d6098fffaedaa88d080e8bc965",
+      "bytes": 496
+    },
+    {
+      "path": "index.html",
+      "sha256": "5795e243c96851487cb4557dfc8cd67f220adc83ecd47bbf29ac42316c3eb9c5",
+      "bytes": 819
+    },
+    {
+      "path": "manifest-ar.webmanifest",
+      "sha256": "4a6700b394165f4914ffbde8373983f398328c644977f1b06079d9d9fcaa4899",
+      "bytes": 678
+    },
+    {
+      "path": "manifest-bg.webmanifest",
+      "sha256": "a2a2bcade14205b25d84896ac916a80a7dc37e657074f9ef167adf690e87f1a1",
+      "bytes": 739
+    },
+    {
+      "path": "manifest-bn.webmanifest",
+      "sha256": "96ebea8c0de714b3c66a299087f1cd932413decd7f3608b7199d56c4b7400ef3",
+      "bytes": 716
+    },
+    {
+      "path": "manifest-cs.webmanifest",
+      "sha256": "7e17fc9debc7f215df7c93442612730d4030fdeaac1719bd68e504ca63809e36",
+      "bytes": 619
+    },
+    {
+      "path": "manifest-da.webmanifest",
+      "sha256": "f7477725795872321415f21d3822ae83fbb71a494092009f2b901ede50aca97b",
+      "bytes": 614
+    },
+    {
+      "path": "manifest-de.webmanifest",
+      "sha256": "b9f38cddcf4c3116de3551a3b620fba27cd7bc24d6b3e3d7fcea79a691987d20",
+      "bytes": 612
+    },
+    {
+      "path": "manifest-el.webmanifest",
+      "sha256": "d8984cf911b5dbb60153edf439602c6abfb17cb696c78e841e0ffbf2220c4d1a",
+      "bytes": 753
+    },
+    {
+      "path": "manifest-en.webmanifest",
+      "sha256": "883b244d6656ec6057819ebc59a30cdab91d7293edd73e74c7962ac4102f62f2",
+      "bytes": 579
+    },
+    {
+      "path": "manifest-es.webmanifest",
+      "sha256": "dafc3f25a5aae352fa19997cc9bf9565a96c4727f699acbcccdea82a674a4c36",
+      "bytes": 611
+    },
+    {
+      "path": "manifest-et.webmanifest",
+      "sha256": "6284957c69c4a95efdd30079b9b8e5437ff2ea782ed70360c69f4a6f1cfcef8f",
+      "bytes": 594
+    },
+    {
+      "path": "manifest-fa.webmanifest",
+      "sha256": "ab34ee7e8b4ee249b64da218d26943ec6996296bdf61f8d4f44023dd34a3a3c3",
+      "bytes": 676
+    },
+    {
+      "path": "manifest-fi.webmanifest",
+      "sha256": "fffc2a385a91392677a5262fabbdecd89735acbdd9325cb69f431e27030db363",
+      "bytes": 614
+    },
+    {
+      "path": "manifest-fr.webmanifest",
+      "sha256": "e8ac20a2266a85ffc22df78cb1935518055fc9dfb46452a9dbc22f1aea929823",
+      "bytes": 610
+    },
+    {
+      "path": "manifest-hi.webmanifest",
+      "sha256": "5139e4acd20cc5b8fa3689a7c101bac3a3b1de21b994346518e606ea0c2d6e9c",
+      "bytes": 700
+    },
+    {
+      "path": "manifest-hr.webmanifest",
+      "sha256": "5476d657d652683b61fa61fcc17a6ca171f888b44aaf90193bd03a4857fd4c04",
+      "bytes": 616
+    },
+    {
+      "path": "manifest-hu.webmanifest",
+      "sha256": "280d1151f4507677a18f7ca1e04b40cc5da956d1c3684b1502a20977230461f5",
+      "bytes": 637
+    },
+    {
+      "path": "manifest-id.webmanifest",
+      "sha256": "c7657979d2a6a8978dff8f3d1274f339c9da1f896197e94d8f4e274a98f0b19c",
+      "bytes": 587
+    },
+    {
+      "path": "manifest-it.webmanifest",
+      "sha256": "b18e27edf0c0b65803d7df2694cec02ee8179442c21b581f3fefc5cdd9f0e8a8",
+      "bytes": 595
+    },
+    {
+      "path": "manifest-ja.webmanifest",
+      "sha256": "bd74279151f9e538fa4f355507879245da104f26721354af45e574dfc7f251ef",
+      "bytes": 615
+    },
+    {
+      "path": "manifest-ko.webmanifest",
+      "sha256": "02397211e69b71f03c069bb0ce08c3ce204c3e88c4228084d71d2b513b356b6f",
+      "bytes": 606
+    },
+    {
+      "path": "manifest-lt.webmanifest",
+      "sha256": "adda0101764b5f44e8fb3d7a773e3aa11f0020eddd148137add2dab0ae7540ad",
+      "bytes": 623
+    },
+    {
+      "path": "manifest-lv.webmanifest",
+      "sha256": "bbcf37053423a6f4c8d83ca1b0f2e50b774fe83c7a3a8f47b1fd3e6bcd1fe1c2",
+      "bytes": 595
+    },
+    {
+      "path": "manifest-nl.webmanifest",
+      "sha256": "fe6d841f79bc1c1dd191b488c0dd012413a5622f24d69e12bcf94f7070751966",
+      "bytes": 595
+    },
+    {
+      "path": "manifest-no.webmanifest",
+      "sha256": "998953db21b727b4ed47b7f9bab9e0f5f862ab59ef334d6763059491535d7995",
+      "bytes": 616
+    },
+    {
+      "path": "manifest-pl.webmanifest",
+      "sha256": "bb81633999f844981f039f1016d631c19fadda85c9aaf301a4d5c9aa4bdedad1",
+      "bytes": 616
+    },
+    {
+      "path": "manifest-pt.webmanifest",
+      "sha256": "d2e407d80a584c0c0acb986d9422c70da207ef12a0712624ff00939065c154a1",
+      "bytes": 607
+    },
+    {
+      "path": "manifest-ro.webmanifest",
+      "sha256": "a56d2393828a2d47a2f65f755e3c2447ba318d612e44497427a64a23ba68e5ac",
+      "bytes": 630
+    },
+    {
+      "path": "manifest-ru.webmanifest",
+      "sha256": "ef504bbca46079d0635f3b872bd9bbcffe1959d8138879c696035a76241534b9",
+      "bytes": 702
+    },
+    {
+      "path": "manifest-sk.webmanifest",
+      "sha256": "e3b761a7733f7a5f59c291145c4733d5f62d0ae26d7bb3e54db1058c0865ca8b",
+      "bytes": 633
+    },
+    {
+      "path": "manifest-sl.webmanifest",
+      "sha256": "f67b899867dc3e3447db9ffeaa40c8cafbc6573ed288896d4b6de1dcf1da264c",
+      "bytes": 617
+    },
+    {
+      "path": "manifest-sv.webmanifest",
+      "sha256": "fd2c37c85a06828655e90633464886f1b529f2583a1c25693d5bbe11c2abacdf",
+      "bytes": 627
+    },
+    {
+      "path": "manifest-ta.webmanifest",
+      "sha256": "e2f4ddd042b2779e50cd81531b779b39cb44fee4ac6a3a8f652c2ff64932ce12",
+      "bytes": 807
+    },
+    {
+      "path": "manifest-th.webmanifest",
+      "sha256": "6cba9b1761ebc2045a334135429a98c75486b7e2615d9a06ef634b7abd8e1fcd",
+      "bytes": 764
+    },
+    {
+      "path": "manifest-tr.webmanifest",
+      "sha256": "29f44ec865ffceeab0959ec51ce37108e0168ca04f9b8374b9a5ecc809c883aa",
+      "bytes": 612
+    },
+    {
+      "path": "manifest-uk.webmanifest",
+      "sha256": "a884139540f6022a0206634ae0d5f0669b963da89cace8f69ad6f5a5e73ae654",
+      "bytes": 695
+    },
+    {
+      "path": "manifest-ur.webmanifest",
+      "sha256": "66ad4a5fad33d8e6920e2d52d1cf263803ad92829b89cd14b2f4dc774ea1503d",
+      "bytes": 628
+    },
+    {
+      "path": "manifest-vi.webmanifest",
+      "sha256": "626cd66a7c930f1cc3f57d8fc57b7484d23567997a007c55aa67ab438724fa73",
+      "bytes": 625
+    },
+    {
+      "path": "manifest-zh-Hans.webmanifest",
+      "sha256": "4f92a295a0e50085d2006eb25b48ffdcbd93693a1739bc1851cbe6fecdc1105e",
+      "bytes": 591
+    },
+    {
+      "path": "manifest-zh-Hant.webmanifest",
+      "sha256": "3a95c37cd0708e58e59a7ef60e796c587607324e2910200e9f2faba430a3d632",
+      "bytes": 588
+    },
+    {
+      "path": "manifest.webmanifest",
+      "sha256": "1ad260319a07fe9c24f04131b3c765bbaed7514dec75e51a1ef1f300e4eb582b",
+      "bytes": 585
+    },
+    {
+      "path": "sw.js",
+      "sha256": "d7374a11e77ce1847563361886225d9cfd4bd346cc5763a1b1488b6daf4b440e",
+      "bytes": 4760
+    },
+    {
+      "path": "workbox-9c191d2f.js",
+      "sha256": "04b086f1b2f4215ee4b659a7bc9c76162894abdb43fa876247bc7c0bd6fd1c37",
+      "bytes": 15112
+    }
+  ],
+  "releaseArtifact": {
+    "status": "ZIP_CRC_AND_EVERY_FILE_SHA_VERIFIED",
+    "files": 51,
+    "bytes": 402613,
+    "sha256": "f3881ade3e8b4b5b5c01fb12956554ad6b7c61607138c60da0ae753600f014b7",
+    "path": "C:/Users/minor/AndroidStudioProjects/FlashcardsAndroidStarter/.gradle-session/web-pwa-39-20261031T141213Z/release/flashcards-pc-input-prepublish-20261101.zip"
+  }
+}

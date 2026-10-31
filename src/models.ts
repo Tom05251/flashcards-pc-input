@@ -11,6 +11,16 @@ export interface TextHighlight {
   suffix?: string
 }
 
+// Stale positions/text are retained for review. This checks only the shape
+// needed to display/edit a span safely; it never changes imported metadata.
+export function isSafeTextHighlight(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const item = value as Record<string, unknown>
+  if (!Number.isSafeInteger(item.start) || !Number.isSafeInteger(item.end) || typeof item.color !== 'string' ||
+      !['blue', 'red', 'yellow', 'green'].includes(item.color.toLowerCase())) return false
+  return ['text', 'prefix', 'suffix'].every((key) => item[key] == null || typeof item[key] === 'string')
+}
+
 export interface MediaItem {
   id: string
   type: MediaType

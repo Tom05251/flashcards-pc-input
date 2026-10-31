@@ -654,10 +654,17 @@ body[data-theme='light'] .highlight-input-overlay {
 
 .destination {
   justify-content: space-between;
+  flex-wrap: wrap;
   border-top: 1px solid #34465f;
   border-bottom: 1px solid #34465f;
   padding: 1px 0;
   min-height: 24px;
+}
+
+.destination > strong,
+.destination > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .media-panel {
@@ -724,6 +731,22 @@ body[data-theme='light'] .highlight-input-overlay {
   padding: 8px;
   display: grid;
   gap: 5px;
+}
+
+.media-list article {
+  min-width: 0;
+}
+
+.media-list article > div {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.media-list article button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .item-list article {
@@ -820,7 +843,7 @@ body[data-theme='light'] .highlight-input-overlay {
 
 .folder-pane .button-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
   align-items: center;
   overflow: visible;
@@ -835,17 +858,20 @@ body[data-theme='light'] .highlight-input-overlay {
 }
 
 .folder-pane .button-row button {
-  min-width: max-content;
-  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
   padding: 2px 7px;
   font-size: 12px;
   overflow: visible;
   text-overflow: unset;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .fast-edit {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 8px;
   align-items: center;
   max-width: 420px;
@@ -860,6 +886,8 @@ body[data-theme='light'] .highlight-input-overlay {
 }
 
 .fast-edit span {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: #dcecff;
   font-size: 13px;
 }

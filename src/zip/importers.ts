@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
 import type { CardEntry, MediaItem, NoteEntry, WorkspaceData, WorkspaceDraft } from '../models'
-import { emptyWorkspace, mergeImportedEntries, normalizeWorkspaceDraft } from '../models'
+import { emptyWorkspace, isSafeTextHighlight, mergeImportedEntries, normalizeWorkspaceDraft } from '../models'
 import { safeZipPath } from '../security/files'
 import type { StagedMedia } from '../storage/db'
 
@@ -230,6 +230,10 @@ export function importCsv(text: string): ImportPreview {
   return { workspace: normalizeWorkspace(raw), warnings: [], media: [] }
 }
 
+function validateOptionalText(record: Record<string, unknown>, key: string) {
+  if (record[key] != null && typeof record[key] !== 'string') throw new Error(`Invalid ${key}`)
+}
+
 export function normalizeWorkspace(input: unknown): WorkspaceDraft {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid workspace')
   const raw = input as Partial<WorkspaceData>
@@ -237,15 +241,29 @@ export function normalizeWorkspace(input: unknown): WorkspaceDraft {
   if (raw.cards !== undefined && !Array.isArray(raw.cards)) throw new Error('Invalid cards')
   if (raw.notes !== undefined && !Array.isArray(raw.notes)) throw new Error('Invalid notes')
   if (raw.cards === undefined && raw.notes === undefined) throw new Error('Missing content arrays')
+  for (const names of [raw.cardFolderNames, raw.noteFolderNames]) {
+    if (!Array.isArray(names)) continue
+    for (const name of names) {
+      if (!name || typeof name !== 'object' || Array.isArray(name)) throw new Error('Invalid folder name')
+      validateOptionalText(name as unknown as Record<string, unknown>, 'displayName')
+    }
+  }
   const prepare = (item: CardEntry | NoteEntry, index: number, card: boolean) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Invalid content item')
     const value = item as unknown as Record<string, unknown>
     for (const key of card ? ['question', 'answer'] : ['title', 'body']) if (typeof value[key] !== 'string') throw new Error(`Invalid ${key}`)
+    if (card) for (const key of ['hint', 'hint2']) validateOptionalText(value, key)
+    if (value.tags != null && (!Array.isArray(value.tags) || value.tags.some((tag) => tag !== null && !['string', 'number', 'boolean'].includes(typeof tag)))) {
+      throw new Error('Invalid tags')
+    }
     const id = value.id === undefined ? index + 1 : Number(value.id)
     if (!Number.isInteger(id) || id <= 0 || id > 2147483647) throw new Error('Invalid content identifier')
     const result = { ...item, id, sourceFields: Object.keys(value), folderPath: typeof item.folderPath === 'string' ? item.folderPath : '', media: normalizeMedia(value) }
     for (const key of card ? ['questionHighlights', 'answerHighlights', 'hintHighlights', 'hint2Highlights'] : ['titleHighlights', 'bodyHighlights']) {
       if (value[key] !== undefined && !Array.isArray(value[key])) throw new Error('Invalid highlights')
+      // Keep safe stale spans and opaque metadata byte-for-byte; reject unsafe
+      // elements before preview instead of persisting data the editor cannot render.
+      if (Array.isArray(value[key]) && !value[key].every(isSafeTextHighlight)) throw new Error('Invalid highlight element')
     }
     return result
   }
@@ -276,6 +294,7 @@ function normalizeMedia(record: Record<string, unknown>): MediaItem[] {
   const items = Array.isArray(record.media) ? record.media : legacy
   return items.map((item) => {
     if (!item || typeof item !== 'object' || !['image', 'audio'].includes(item.type)) throw new Error('Invalid attachment type')
+    for (const key of ['originalName', 'mime', 'caption', 'blobRef']) validateOptionalText(item, key)
     const fileName = item.fileName ?? item.path
     if (typeof fileName !== 'string') throw new Error('Invalid attachment path')
     return {
