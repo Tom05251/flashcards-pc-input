@@ -96,8 +96,8 @@ textarea.large {
   width: 100vw;
   height: 100vh;
   padding: 4px;
-  display: grid;
-  grid-template-rows: 132px 1fr 42px;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   overflow: hidden;
 }
@@ -128,8 +128,9 @@ body[data-theme='light'] .panel {
 }
 
 .windows-top {
+  flex: none;
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) auto;
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 3fr);
   grid-template-rows: auto auto;
   gap: 10px 18px;
   align-items: center;
@@ -159,6 +160,8 @@ body[data-theme='light'] .item-list article span {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: 10px;
 }
@@ -171,6 +174,7 @@ body[data-theme='light'] .item-list article span {
 .install-guidance {
   grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   min-height: 34px;
@@ -190,7 +194,7 @@ body[data-theme='light'] .item-list article span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .install-guidance button {
@@ -210,6 +214,9 @@ body[data-theme='light'] .item-list article span {
   max-width: min(760px, calc(100vw - 36px));
   padding: 16px;
   background: #102235;
+  max-height: calc(100vh - 170px);
+  overflow: auto;
+  overflow-wrap: anywhere;
 }
 
 .install-help h2 {
@@ -227,10 +234,10 @@ body[data-theme='light'] .item-list article span {
 }
 
 .status-line {
-  position: fixed;
-  left: 18px;
-  right: 18px;
-  top: 152px;
+  flex: none;
+  max-height: 20vh;
+  overflow: auto;
+  gap: 12px;
   z-index: 30;
   display: flex;
   justify-content: space-between;
@@ -291,11 +298,13 @@ body[data-theme='light'] .item-list article.selected-item {
 }
 
 .windows-grid {
+  flex: 1;
   display: grid;
   grid-template-columns: 590px 6px minmax(420px, 1fr) 6px 220px;
   gap: 6px;
   min-height: 0;
-  overflow: hidden;
+  min-width: 0;
+  overflow: auto;
 }
 
 .column-resizer {
@@ -320,6 +329,7 @@ body.resizing-columns {
 .editor-pane,
 .list-pane {
   min-height: 0;
+  min-width: 0;
   padding: 14px 16px;
 }
 
@@ -331,7 +341,7 @@ body.resizing-columns {
 
 .editor-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) 24px 30px 32px;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   gap: 3px;
   overflow: hidden;
 }
@@ -343,10 +353,16 @@ body.resizing-columns {
 }
 
 .windows-bottom {
+  flex: none;
   padding: 10px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  overflow-wrap: anywhere;
+  max-height: 26vh;
+  overflow-y: auto;
   color: #dcecff;
 }
 
@@ -443,7 +459,7 @@ h3 {
 }
 
 .card-editor-grid {
-  grid-template-rows: repeat(4, minmax(136px, 1fr));
+  grid-template-rows: repeat(4, minmax(max-content, 1fr));
   overflow-y: auto;
   font-size: 13px;
 }
@@ -469,6 +485,7 @@ h3 {
   gap: 1px;
   grid-template-rows: auto minmax(48px, 1fr) auto auto;
   overflow: hidden;
+  min-height: 136px;
 }
 
 .card-editor-grid .field-block label {
@@ -483,7 +500,7 @@ h3 {
 
 .card-editor-grid .highlight-toolbar,
 .note-editor-grid .highlight-toolbar {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 6px;
   overflow: hidden;
 }
@@ -646,16 +663,18 @@ body[data-theme='light'] .highlight-input-overlay {
 .media-panel {
   display: block;
   min-height: 0;
-  overflow: hidden;
+  max-height: 22vh;
+  overflow: auto;
 }
 
 .media-layout {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: start;
+  flex-wrap: wrap;
   gap: 8px;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .media-add-button {
@@ -670,6 +689,7 @@ body[data-theme='light'] .highlight-input-overlay {
   gap: 8px;
   min-width: 0;
   min-height: 28px;
+  flex-wrap: wrap;
 }
 
 .media-count {
@@ -680,14 +700,14 @@ body[data-theme='light'] .highlight-input-overlay {
 
 .media-panel .preview-box {
   min-height: 24px;
-  max-height: 24px;
+  max-height: 160px;
   width: 220px;
   padding: 2px 6px;
   font-size: 12px;
   line-height: 18px;
-  white-space: nowrap;
+  white-space: normal;
   text-overflow: ellipsis;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .media-panel .preview-box strong {
@@ -775,10 +795,16 @@ body[data-theme='light'] .highlight-input-overlay {
   min-height: 32px;
   align-items: center;
   overflow: visible;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .media-panel .media-list {
-  display: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  max-height: 130px;
+  min-width: 180px;
+  width: 100%;
 }
 
 .editor-actions > div {
@@ -825,7 +851,8 @@ body[data-theme='light'] .highlight-input-overlay {
   max-width: 420px;
   text-align: right;
   min-height: 26px;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: start;
 }
 
 .fast-edit input {
@@ -899,6 +926,7 @@ body[data-theme='light'] .modal-backdrop {
   border-radius: 8px;
   padding: 18px;
   pointer-events: auto;
+  overflow-wrap: anywhere;
 }
 
 .tutorial-modal .modal {
@@ -919,6 +947,10 @@ body[data-theme='light'] .modal-backdrop {
 
 .modal h2 {
   margin: 0;
+}
+
+.modal p {
+  white-space: pre-wrap;
 }
 
 .glossary-list {
@@ -967,7 +999,7 @@ body[data-theme='light'] .modal-backdrop {
 
 @media (max-height: 820px) {
   .desktop-shell {
-    grid-template-rows: 76px 1fr 38px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 6px;
   }
 
@@ -983,12 +1015,12 @@ body[data-theme='light'] .modal-backdrop {
   }
 
   .editor-pane {
-    grid-template-rows: auto minmax(0, 1fr) 24px 30px 32px;
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto;
     gap: 3px;
   }
 
   .card-editor-grid {
-    grid-template-rows: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(max-content, 1fr));
   }
 
   .note-editor-grid {

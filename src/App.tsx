@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { registerSW } from 'virtual:pwa-register'
 import type { Dispatch, PointerEvent as ReactPointerEvent, ReactNode, SetStateAction } from 'react'
 import { I18nProvider } from './i18n/I18nProvider'
 import { useI18n } from './i18n/useI18n'
@@ -6,9 +7,14 @@ import { supportedLanguages } from './i18n/languages'
 import type { CardEntry, EntryMode, HighlightColor, MediaItem, NoteEntry, TextHighlight, WorkspaceDraft } from './models'
 import { emptyWorkspace, mergeImportedEntries, newRecordIdentity, nextCardId, nextNoteId, normalizeWorkspaceDraft } from './models'
 import { isAllowedMedia, mediaTypeFromMime, safeZipName } from './security/files'
-import { getMediaBlob, loadWorkspaceDraft, saveMediaBlob, saveWorkspaceDraft } from './storage/db'
+import { getMediaBlob, loadWorkspaceSnapshot } from './storage/db'
+import type { StagedMedia } from './storage/db'
+import { WorkspacePersistence } from './storage/persistence'
+import type { SaveState } from './storage/persistence'
+import { getPreference, setPreference } from './storage/preferences'
 import { buildAndroidZip, buildCardCsv, buildNoteCsv, buildWorkspaceJson, downloadBlob } from './zip/exporters'
 import { importWorkspaceFile } from './zip/importers'
+import type { ImportPreview } from './zip/importers'
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>
@@ -50,6 +56,19 @@ function WindowsLikePwa() {
   const [workspace, setWorkspace] = useState<WorkspaceDraft>(() => emptyWorkspace())
   const [storageState, setStorageState] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [lastSavedAt, setLastSavedAt] = useState('')
+  const [saveState, setSaveState] = useState<SaveState>('saved')
+  const [persistedWorkspace, setPersistedWorkspace] = useState<WorkspaceDraft | null>(null)
+  const persistence = useRef<WorkspacePersistence | null>(null)
+  const stagedMedia = useRef(new Map<string, StagedMedia>())
+  const [pendingImport, setPendingImport] = useState<{ preview: ImportPreview; fileName: string; baseRevision: number; remoteEpoch: number; fingerprint: string; replace: boolean; state: 'preview' | 'stale' | 'failed' | 'committing' } | null>(null)
+  const [remoteEpoch, setRemoteEpoch] = useState(0)
+  const remoteEpochRef = useRef(0)
+  const editsChannel = useRef<BroadcastChannel | null>(null)
+  const previousFingerprint = useRef<string | null>(null)
+  const [readingImport, setReadingImport] = useState(false)
+  const importRequest = useRef(0)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const updateServiceWorker = useRef<((reloadPage?: boolean) => Promise<void>) | null>(null)
   const pendingSaveAnnouncement = useRef(false)
   const savedMessage = t('status.autosaved')
   const saveFailedMessage = t('storage.saveFailed')
@@ -57,11 +76,11 @@ function WindowsLikePwa() {
   const [theme, setTheme] = useState(() => {
     const requestedTheme = new URLSearchParams(window.location.search).get('theme')
     if (requestedTheme === 'light' || requestedTheme === 'dark') return requestedTheme
-    return localStorage.getItem('flashcards-pwa-theme') ?? 'dark'
+    return getPreference('flashcards-pwa-theme') ?? 'dark'
   })
   const [message, setMessage] = useState<{ text: string; persistent: boolean } | null>(null)
   const [showHelp, setShowHelp] = useState(false)
-  const [showTutorial, setShowTutorial] = useState(() => localStorage.getItem('flashcards-pwa-tutorial-completed') !== 'true')
+  const [showTutorial, setShowTutorial] = useState(() => getPreference('flashcards-pwa-tutorial-completed') !== 'true')
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(() => isStandaloneDisplay())
   const [showInstallHelp, setShowInstallHelp] = useState(false)
@@ -74,6 +93,9 @@ function WindowsLikePwa() {
   const [highlightModal, setHighlightModal] = useState<{ field: HighlightField; title: string; items: TextHighlight[] } | null>(null)
   const [cardForm, setCardForm] = useState<CardForm>(blankCardForm())
   const [noteForm, setNoteForm] = useState<NoteForm>(blankNoteForm())
+  const [previewMediaId, setPreviewMediaId] = useState('')
+  const [cardBaseline, setCardBaseline] = useState(() => JSON.stringify(blankCardForm()))
+  const [noteBaseline, setNoteBaseline] = useState(() => JSON.stringify(blankNoteForm()))
   const [fieldSelections, setFieldSelections] = useState<Record<HighlightField, TextSelectionState>>(() => blankSelections())
   const [columnWidths, setColumnWidths] = useState(() => loadColumnWidths())
   const gridRef = useRef<HTMLElement | null>(null)
@@ -86,13 +108,52 @@ function WindowsLikePwa() {
   const formMedia = mode === 'cards' ? cardForm.media : noteForm.media
   const currentFolderLabel = selectedFolder ? resolveFolderName(activeFolderNames, selectedFolder) : t('folder.uncategorized')
   const activeTutorialTargets = showTutorial ? tutorialTargets[tutorialStep] : []
+  const editorDirty = JSON.stringify(cardForm) !== cardBaseline || JSON.stringify(noteForm) !== noteBaseline
+  const unsaved = storageState === 'ready' && (editorDirty || workspace !== persistedWorkspace || saveState !== 'saved')
+  const fingerprint = JSON.stringify([workspace, cardForm, noteForm, selectedItemId, mode, theme, language, columnWidths])
+  const liveFingerprint = useRef(fingerprint)
+  useLayoutEffect(() => { liveFingerprint.current = fingerprint }, [fingerprint])
+  const importLocked = readingImport || pendingImport !== null
+  const reloadBlocked = useRef(true)
+  const activatedUpdate = useRef(false)
+  useLayoutEffect(() => { reloadBlocked.current = unsaved || importLocked }, [unsaved, importLocked])
+  const resolveMedia = useMemo(() => async (id: string) => stagedMedia.current.get(id) ?? await getMediaBlob(id), [])
+
+  useEffect(() => {
+    const changedElsewhere = () => { remoteEpochRef.current += 1; setRemoteEpoch(remoteEpochRef.current) }
+    const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('flashcards-pwa-edits')
+    if (channel) channel.onmessage = (event: MessageEvent) => {
+      if (event.data?.kind === 'committed' && Number.isSafeInteger(event.data.revision) && persistence.current && event.data.revision > persistence.current.revision) persistence.current.pauseForExternalChange()
+      changedElsewhere()
+    }
+    editsChannel.current = channel
+    const preferenceChanged = (event: StorageEvent) => { if (event.key?.startsWith('flashcards-pwa-')) changedElsewhere() }
+    window.addEventListener('storage', preferenceChanged)
+    return () => { channel?.close(); window.removeEventListener('storage', preferenceChanged) }
+  }, [])
+
+  useEffect(() => {
+    if (storageState !== 'ready') return
+    if (previousFingerprint.current !== null && previousFingerprint.current !== fingerprint) editsChannel.current?.postMessage('changed')
+    previousFingerprint.current = fingerprint
+  }, [fingerprint, storageState])
 
   useEffect(() => {
     let active = true
-    loadWorkspaceDraft().then((saved) => {
+    loadWorkspaceSnapshot().then(({ workspace: saved, revision }) => {
       if (!active) return
+      persistence.current = new WorkspacePersistence(revision, (state, draft, savedAt) => {
+        if (!active) return
+        setSaveState(state)
+        if (draft && savedAt) {
+          setPersistedWorkspace(draft)
+          setLastSavedAt(savedAt)
+        }
+      }, (committedRevision) => { if (active) editsChannel.current?.postMessage({ kind: 'committed', revision: committedRevision }) })
       if (saved) {
-        setWorkspace(normalizeWorkspaceDraft(saved))
+        const normalized = normalizeWorkspaceDraft(saved)
+        setWorkspace(normalized)
+        setPersistedWorkspace(normalized)
         setMode(saved.uiState.activeTab)
         setLastSavedAt(saved.updatedAt)
       }
@@ -103,30 +164,48 @@ function WindowsLikePwa() {
 
   useEffect(() => {
     document.body.dataset.theme = theme
-    localStorage.setItem('flashcards-pwa-theme', theme)
+    setPreference('flashcards-pwa-theme', theme)
   }, [theme])
 
   useEffect(() => {
     document.documentElement.lang = language
+    document.title = t('window.title')
     document.documentElement.translate = false
     document.documentElement.classList.add('notranslate')
     document.body.translate = false
     document.body.classList.add('notranslate')
-  }, [language])
+  }, [language, t])
 
   useEffect(() => {
     if (storageState !== 'ready') return
+    if (workspace === persistedWorkspace) return
     let active = true
-    saveWorkspaceDraft({ ...workspace, uiState: { ...workspace.uiState, activeTab: mode } }).then(() => {
+    const media = [...stagedMedia.current.values()].filter((blob) => [...workspace.cards, ...workspace.notes].some((item) => item.media.some((attachment) => attachment.blobRef === blob.id)))
+    persistence.current?.save(workspace, media).then(() => {
+      media.forEach((blob) => stagedMedia.current.delete(blob.id))
       if (!active) return
-      setLastSavedAt(new Date().toISOString())
       if (pendingSaveAnnouncement.current) {
         pendingSaveAnnouncement.current = false
         setMessage({ text: savedMessage, persistent: false })
       }
     }).catch(() => { if (active) setMessage({ text: saveFailedMessage, persistent: true }) })
     return () => { active = false }
-  }, [workspace, mode, storageState, savedMessage, saveFailedMessage])
+  }, [workspace, persistedWorkspace, storageState, savedMessage, saveFailedMessage])
+
+  useEffect(() => {
+    if (!unsaved) return
+    const protectUncommitted = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', protectUncommitted)
+    return () => window.removeEventListener('beforeunload', protectUncommitted)
+  }, [unsaved])
+
+  useEffect(() => {
+    updateServiceWorker.current = registerSW({ immediate: true, onNeedRefresh: () => setUpdateAvailable(true), onNeedReload: () => {
+      activatedUpdate.current = true
+      if (reloadBlocked.current) setUpdateAvailable(true)
+      else window.location.reload()
+    } })
+  }, [])
 
   useEffect(() => {
     if (!message || message.persistent) return
@@ -198,16 +277,7 @@ function WindowsLikePwa() {
   }, [highlightModal, showHelp, showTutorial, tutorialStep, t])
 
   useEffect(() => {
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [])
-
-  useEffect(() => {
-    localStorage.setItem(columnWidthStorageKey, JSON.stringify(columnWidths))
+    setPreference(columnWidthStorageKey, JSON.stringify(columnWidths))
   }, [columnWidths])
 
   useEffect(() => {
@@ -215,12 +285,13 @@ function WindowsLikePwa() {
       const drag = dragState.current
       const grid = gridRef.current
       if (!drag || !grid) return
-      const bounds = grid.getBoundingClientRect()
+      const direction = getComputedStyle(grid).direction === 'rtl' ? -1 : 1
+      const delta = (event.clientX - drag.startX) * direction
       if (drag.edge === 'left') {
-        const nextLeft = clamp(event.clientX - bounds.left, 520, 760)
+        const nextLeft = clamp(drag.startLeft + delta, 520, 760)
         setColumnWidths((current) => ({ ...current, left: nextLeft }))
       } else {
-        const nextRight = clamp(bounds.right - event.clientX, 200, 340)
+        const nextRight = clamp(drag.startRight - delta, 200, 340)
         setColumnWidths((current) => ({ ...current, right: nextRight }))
       }
     }
@@ -254,6 +325,15 @@ function WindowsLikePwa() {
     setMessage({ text, persistent })
   }
 
+  async function retrySave() {
+    const media = [...stagedMedia.current.values()].filter((blob) => [...workspace.cards, ...workspace.notes].some((item) => item.media.some((attachment) => attachment.blobRef === blob.id)))
+    try {
+      await persistence.current?.retry(workspace, media)
+      media.forEach((blob) => stagedMedia.current.delete(blob.id))
+      setMessage(null)
+    } catch { notify(t('storage.saveFailed'), true) }
+  }
+
   async function installAppToPc() {
     if (isStandaloneDisplay()) {
       setIsInstalled(true)
@@ -268,9 +348,7 @@ function WindowsLikePwa() {
     await installPrompt.prompt()
     const choice = await installPrompt.userChoice
     if (choice.outcome === 'accepted') {
-      setIsInstalled(true)
       setInstallPrompt(null)
-      notify(t('install.installedMessage'))
     } else {
       setShowInstallHelp(true)
       notify(t('install.manualShortcut'), true)
@@ -369,7 +447,7 @@ function WindowsLikePwa() {
         continue
       }
       const id = crypto.randomUUID()
-      await saveMediaBlob(id, file, file.name, file.type)
+      stagedMedia.current.set(id, { id, blob: file, name: file.name, mime: file.type })
       accepted.push({
         id,
         type: mediaTypeFromMime(file.type),
@@ -381,8 +459,8 @@ function WindowsLikePwa() {
         size: file.size,
       })
     }
-    if (mode === 'cards') setCardForm({ ...cardForm, media: [...cardForm.media, ...accepted] })
-    else setNoteForm({ ...noteForm, media: [...noteForm.media, ...accepted] })
+    if (mode === 'cards') setCardForm((current) => ({ ...current, media: [...current.media, ...accepted] }))
+    else setNoteForm((current) => ({ ...current, media: [...current.media, ...accepted] }))
   }
 
   async function removeMedia(id: string) {
@@ -425,6 +503,7 @@ function WindowsLikePwa() {
           : workspace.cards.map((item) => item.id === selectedItemId ? card : item),
       })
       setCardForm(blankCardForm())
+      setCardBaseline(JSON.stringify(blankCardForm()))
     } else {
       const existing = workspace.notes.find((item) => item.id === selectedItemId)
       if (!existing && (!noteForm.title.trim() || !noteForm.body.trim())) return notify(t('validation.noteRequired'))
@@ -448,6 +527,7 @@ function WindowsLikePwa() {
           : workspace.notes.map((item) => item.id === selectedItemId ? note : item),
       })
       setNoteForm(blankNoteForm())
+      setNoteBaseline(JSON.stringify(blankNoteForm()))
     }
     setSelectedItemId(null)
     if (continueEditing || fastEdit) pendingSaveAnnouncement.current = true
@@ -455,8 +535,8 @@ function WindowsLikePwa() {
 
   function clearCurrentForm() {
     setSelectedItemId(null)
-    if (mode === 'cards') setCardForm(blankCardForm())
-    else setNoteForm(blankNoteForm())
+    if (mode === 'cards') { setCardForm(blankCardForm()); setCardBaseline(JSON.stringify(blankCardForm())) }
+    else { setNoteForm(blankNoteForm()); setNoteBaseline(JSON.stringify(blankNoteForm())) }
   }
 
   function deleteCurrentItem() {
@@ -464,9 +544,11 @@ function WindowsLikePwa() {
     if (mode === 'cards') {
       updateWorkspace({ ...workspace, cards: workspace.cards.filter((item) => item.id !== selectedItemId) })
       setCardForm(blankCardForm())
+      setCardBaseline(JSON.stringify(blankCardForm()))
     } else {
       updateWorkspace({ ...workspace, notes: workspace.notes.filter((item) => item.id !== selectedItemId) })
       setNoteForm(blankNoteForm())
+      setNoteBaseline(JSON.stringify(blankNoteForm()))
     }
     setSelectedItemId(null)
   }
@@ -474,6 +556,7 @@ function WindowsLikePwa() {
   function selectItem(item: CardEntry | NoteEntry) {
     setSelectedItemId(item.id)
     if ('question' in item) {
+      setCardBaseline(JSON.stringify(cardFormFrom(item)))
       setMode('cards')
       selectFolder(item.folderPath)
       setCardForm({
@@ -488,6 +571,7 @@ function WindowsLikePwa() {
         media: item.media,
       })
     } else {
+      setNoteBaseline(JSON.stringify(noteFormFrom(item)))
       setMode('notes')
       selectFolder(item.folderPath)
       setNoteForm({
@@ -569,11 +653,13 @@ function WindowsLikePwa() {
   }
 
   async function saveZip() {
-    const { blob, missingMedia } = await buildAndroidZip(workspace)
-    const warning = missingMedia.length ? `${t('export.missingMedia', missingMedia.join(', '))} ` : ''
-    const fileName = 'cards_sync.zip'
-    const savedByPicker = await saveBlobWithPicker(blob, fileName)
-    notify(`${warning}${savedByPicker === 'picked' ? t('save.success', fileName) : savedByPicker === 'cancelled' ? t('save.cancelled') : t('save.downloadFallback', fileName)}`, Boolean(warning))
+    try {
+      const { blob, missingMedia } = await buildAndroidZip(workspace, resolveMedia)
+      const warning = missingMedia.length ? `${t('export.missingMedia', missingMedia.join(', '))} ` : ''
+      const fileName = 'cards_sync.zip'
+      const savedByPicker = await saveBlobWithPicker(blob, fileName, t('save.zipType'))
+      notify(`${warning}${savedByPicker === 'picked' ? t('save.success', fileName) : savedByPicker === 'cancelled' ? t('save.cancelled') : t('save.downloadFallback', fileName)}`, Boolean(warning))
+    } catch { notify(t('pwa.download.failed'), true) }
   }
 
   async function downloadZipTemplate() {
@@ -583,29 +669,84 @@ function WindowsLikePwa() {
   }
 
   function downloadCsvTemplate() {
-    downloadBlob(mode === 'cards' ? buildCardCsv(workspace.cards) : buildNoteCsv(workspace.notes), mode === 'cards' ? 'cards_template.csv' : 'notes_template.csv')
-    notify(t('export.csvSpreadsheetWarning'))
+    downloadBlob(mode === 'cards' ? buildCardCsv([]) : buildNoteCsv([]), mode === 'cards' ? 'cards_template.csv' : 'notes_template.csv')
   }
 
-  async function openFile(file: File | undefined, replace: boolean) {
+  function exportCsv() {
+    downloadBlob(mode === 'cards' ? buildCardCsv(workspace.cards) : buildNoteCsv(workspace.notes), mode === 'cards' ? 'cards.csv' : 'notes.csv')
+    notify(t('export.csvSpreadsheetWarning'), true)
+  }
+
+  async function openFile(file: File | undefined) {
     if (!file) return
+    const request = ++importRequest.current
+    setReadingImport(true)
     try {
       const preview = await importWorkspaceFile(file)
-      setWorkspace((current) => ({
-        ...(replace ? preview.workspace : {
-          ...current,
-          cards: mergeImportedEntries(current.cards, preview.workspace.cards),
-          notes: mergeImportedEntries(current.notes, preview.workspace.notes),
-          cardFolders: Array.from(new Set([...current.cardFolders, ...preview.workspace.cardFolders])),
-          noteFolders: Array.from(new Set([...current.noteFolders, ...preview.workspace.noteFolders])),
-          cardFolderNames: mergeFolderNames(current.cardFolderNames, preview.workspace.cardFolderNames),
-          noteFolderNames: mergeFolderNames(current.noteFolderNames, preview.workspace.noteFolderNames),
-        }),
-        updatedAt: new Date().toISOString(),
-      }))
-      notify(`${t('import.completed')} ${preview.warnings.join(' ')}`)
+      const staged = new Set(preview.media.map((item) => item.id))
+      const warned = new Set(preview.warnings.map((warning) => warning.path))
+      for (const item of [...preview.workspace.cards, ...preview.workspace.notes]) for (const media of item.media) {
+        if (!staged.has(media.blobRef) && !warned.has(media.fileName) && !await resolveMedia(media.blobRef)) {
+          preview.warnings.push({ kind: 'missing-media', path: media.fileName })
+          warned.add(media.fileName)
+        }
+      }
+      await persistence.current?.settled()
+      const snapshot = await loadWorkspaceSnapshot()
+      if (request !== importRequest.current) return
+      const revision = persistence.current?.revision ?? -1
+      setPendingImport({ preview, fileName: file.name, baseRevision: revision, remoteEpoch: remoteEpochRef.current, fingerprint: liveFingerprint.current, replace: false, state: snapshot.revision === revision ? 'preview' : 'stale' })
     } catch {
-      notify(t('import.failed'), true)
+      if (request === importRequest.current) notify(t('import.failed'), true)
+    } finally { if (request === importRequest.current) setReadingImport(false) }
+  }
+
+  function cancelImport() {
+    if (pendingImport?.state === 'committing') return
+    importRequest.current += 1
+    setReadingImport(false)
+    setPendingImport(null)
+    notify(t('import.cancelled'))
+  }
+
+  async function confirmImport() {
+    if (!pendingImport || pendingImport.state !== 'preview' || !persistence.current) return
+    const plan = pendingImport
+    setPendingImport({ ...plan, state: 'committing' })
+    await persistence.current.settled()
+    if (liveFingerprint.current !== plan.fingerprint || remoteEpochRef.current !== plan.remoteEpoch || workspace !== persistedWorkspace || saveState !== 'saved') {
+      setPendingImport({ ...plan, state: 'stale' })
+      return
+    }
+    const incoming = plan.preview.workspace
+    const next = normalizeWorkspaceDraft({
+      ...(plan.replace ? incoming : {
+        ...workspace,
+        cards: mergeImportedEntries(workspace.cards, incoming.cards),
+        notes: mergeImportedEntries(workspace.notes, incoming.notes),
+        cardFolders: Array.from(new Set([...workspace.cardFolders, ...incoming.cardFolders])),
+        noteFolders: Array.from(new Set([...workspace.noteFolders, ...incoming.noteFolders])),
+        cardFolderNames: mergeFolderNames(workspace.cardFolderNames, incoming.cardFolderNames),
+        noteFolderNames: mergeFolderNames(workspace.noteFolderNames, incoming.noteFolderNames),
+      }),
+      updatedAt: new Date().toISOString(),
+    })
+    try {
+      await persistence.current.save(next, plan.preview.media, plan.baseRevision, () => liveFingerprint.current === plan.fingerprint && remoteEpochRef.current === plan.remoteEpoch)
+      setWorkspace(next)
+      setMode(next.uiState.activeTab)
+      setSelectedItemId(null)
+      if (!editorDirty) { setCardForm(blankCardForm()); setNoteForm(blankNoteForm()) }
+      setCardBaseline(JSON.stringify(blankCardForm()))
+      setNoteBaseline(JSON.stringify(blankNoteForm()))
+      setPendingImport(null)
+      notify(t('import.completed'))
+    } catch (error) {
+      const conflict = typeof error === 'object' && error !== null && 'code' in error && error.code === 'REVISION_CONFLICT'
+      const stale = typeof error === 'object' && error !== null && 'code' in error && error.code === 'PREVIEW_STALE'
+      setPendingImport({ ...plan, state: conflict || stale ? 'stale' : 'failed' })
+      if (!conflict && liveFingerprint.current === plan.fingerprint && remoteEpochRef.current === plan.remoteEpoch) setSaveState('saved')
+      notify(t(conflict || stale ? 'import.stale' : 'import.failed'), true)
     }
   }
 
@@ -615,7 +756,7 @@ function WindowsLikePwa() {
   })), [t])
 
   function closeTutorial() {
-    localStorage.setItem('flashcards-pwa-tutorial-completed', 'true')
+    setPreference('flashcards-pwa-tutorial-completed', 'true')
     setShowTutorial(false)
     setTutorialStep(0)
   }
@@ -636,22 +777,24 @@ function WindowsLikePwa() {
 
   return (
     <div className="desktop-shell notranslate" translate="no">
-      <header className="windows-top panel">
+      <header className="windows-top panel" inert={importLocked}>
         <div className="brand">
           <h1>{t('app.title')}</h1>
           <p>{t('app.subtitle')}</p>
         </div>
-        <div className="toolbar" aria-label="main actions">
+        <div className="toolbar" aria-label={t('actions.main')}>
           <select value={language} onChange={(event) => setLanguage(event.target.value)} aria-label={t('button.language')}>
             {supportedLanguages.map((item) => <option value={item.code} key={item.code}>{languageNameForUi(item.code, language, item.displayName)}{item.beta ? ` (${t('language.beta')})` : ''}</option>)}
           </select>
           <button className="primary" onClick={installAppToPc}>{isInstalled ? t('install.installed') : t('install.addToPc')}</button>
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? t('button.light') : t('button.dark')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'help')} onClick={() => setShowHelp(true)}>{t('button.help')}</button>
-          <label className={withTutorialFocus('file-button', activeTutorialTargets, 'open-file')}>{t('button.open')}<input type="file" accept=".zip,.json,.csv" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void openFile(file, false) }} /></label>
+          <label className={withTutorialFocus('file-button', activeTutorialTargets, 'open-file')}>{t('button.open')}<input type="file" accept=".zip,.json,.csv" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void openFile(file) }} /></label>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={downloadCsvTemplate}>{t('button.csvTemplate')}</button>
-          <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(buildWorkspaceJson(workspace), 'workspace.json')}>{t('button.jsonTemplate')}</button>
+          <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={() => downloadBlob(buildWorkspaceJson(emptyWorkspace()), 'workspace_template.json')}>{t('button.jsonTemplate')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'templates')} onClick={downloadZipTemplate}>{t('button.zipTemplate')}</button>
+          <button onClick={exportCsv}>{t('button.exportCsv')}</button>
+          <button onClick={() => downloadBlob(buildWorkspaceJson(workspace), 'workspace.json')}>{t('button.exportJson')}</button>
           <button onClick={saveZip} className={withTutorialFocus('primary', activeTutorialTargets, 'zip-export')}>{t('button.saveZip')}</button>
         </div>
         <div className="install-guidance">
@@ -661,8 +804,12 @@ function WindowsLikePwa() {
         </div>
       </header>
 
-      {message && <div className="status-line panel"><span>{message.text}</span><button onClick={() => setMessage(null)}>{t('button.close')}</button></div>}
-      {showInstallHelp && (
+      {message && !(message.text === savedMessage && unsaved) && <div className="status-line panel" role="status" inert={importLocked}><span>{message.text}</span><button onClick={() => setMessage(null)}>{t('button.close')}</button></div>}
+      {updateAvailable && <div className="status-line panel" role="status" inert={importLocked}>
+        <span>{t('pwa.update.available')} {unsaved ? t('pwa.update.unsaved') : ''}</span>
+        <button disabled={unsaved} onClick={() => { if (reloadBlocked.current) return; if (activatedUpdate.current) window.location.reload(); else void updateServiceWorker.current?.(true) }}>{t('pwa.update.reload')}</button>
+      </div>}
+      {showInstallHelp && !importLocked && (
         <div className="install-help panel" role="dialog" aria-label={t('install.helpTitle')}>
           <div>
             <h2>{t('install.helpTitle')}</h2>
@@ -681,6 +828,7 @@ function WindowsLikePwa() {
 
       <main
         className="windows-grid"
+        inert={importLocked}
         ref={gridRef}
         style={{ gridTemplateColumns: `${columnWidths.left}px 6px minmax(420px, 1fr) 6px ${columnWidths.right}px` }}
       >
@@ -736,9 +884,9 @@ function WindowsLikePwa() {
               <div className="media-add-row">
                 <label className="file-button media-add-button">{t('button.addMedia')}<input type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm" onChange={(event) => addMedia(event.target.files)} /></label>
                 {formMedia.length > 0 && <span className="media-count">{t('media.count', formMedia.length)}</span>}
-                <MediaList media={formMedia} onRemove={removeMedia} onCaption={updateMediaCaption} />
+                <MediaList media={formMedia} onRemove={removeMedia} onCaption={updateMediaCaption} onSelect={setPreviewMediaId} />
               </div>
-                <MediaPreview media={formMedia[0]} activeTutorialTargets={activeTutorialTargets} />
+                <MediaPreview media={formMedia.find((item) => item.id === previewMediaId) ?? formMedia[0]} activeTutorialTargets={activeTutorialTargets} resolveMedia={resolveMedia} />
             </div>
           </section>
 
@@ -778,12 +926,37 @@ function WindowsLikePwa() {
         </section>
       </main>
 
-      <footer className="windows-bottom panel">
+      <footer className="windows-bottom panel" aria-live="polite" inert={importLocked}>
         <span>{workspace.cards.length || workspace.notes.length ? t('status.count', workspace.cards.length, workspace.notes.length) : t('status.count.initial')}</span>
-        <span>{lastSavedAt ? t('status.lastSaved', new Date(lastSavedAt).toLocaleString()) : t('status.lastSaved.never')}</span>
+        <span data-save-state={saveState === 'conflict' || saveState === 'failed' ? saveState : editorDirty || workspace !== persistedWorkspace ? 'unsaved' : saveState}>
+          {saveState === 'conflict' ? t('storage.conflict') : saveState === 'failed' ? t('storage.saveFailed') : editorDirty ? t('storage.editorUnsaved') : workspace !== persistedWorkspace || saveState === 'saving' ? t('storage.saving') : lastSavedAt ? t('status.lastSaved', new Date(lastSavedAt).toLocaleString()) : t('status.lastSaved.never')}
+        </span>
+        {saveState === 'failed' && <button onClick={() => void retrySave()}>{t('button.save')}</button>}
       </footer>
 
-      {showHelp && <Modal title={t('help.title')} onClose={() => setShowHelp(false)}>
+      {readingImport && <Modal title={t('import.preview')} onClose={cancelImport}><p role="status">{t('import.reading')}</p><button onClick={cancelImport}>{t('button.cancel')}</button></Modal>}
+      {pendingImport && <Modal title={t('import.preview')} onClose={cancelImport} closeDisabled={pendingImport.state === 'committing'}>
+        <p>{pendingImport.fileName}</p>
+        <p>{t('import.summary', pendingImport.preview.workspace.cards.length, pendingImport.preview.workspace.notes.length, pendingImport.preview.workspace.cardFolders.length + pendingImport.preview.workspace.noteFolders.length, pendingImport.preview.media.length)}</p>
+        <label>{t('label.importMode')}
+          <select value={pendingImport.replace ? 'replace' : 'merge'} disabled={pendingImport.state !== 'preview'} onChange={(event) => setPendingImport({ ...pendingImport, replace: event.target.value === 'replace' })}>
+            <option value="merge">{t('import.merge')}</option><option value="replace">{t('import.replace')}</option>
+          </select>
+        </label>
+        <p>{t(pendingImport.replace ? 'import.replaceInfo' : 'import.mergeInfo')}</p>
+        {pendingImport.replace
+          ? <p>{t('status.count', workspace.cards.length, workspace.notes.length)}</p>
+          : <p>{t('import.changes', ...describeImport(workspace, pendingImport.preview.workspace))}</p>}
+        {editorDirty && <p>{t('import.editorKept')}</p>}
+        {pendingImport.preview.warnings.map((warning, index) => <p key={index} role="alert">{t('import.missingMedia', warning.path)}</p>)}
+        <p role="status">{pendingImport.state === 'committing' ? t('import.committing') : pendingImport.state === 'failed' ? t('import.failed') : pendingImport.state === 'stale' || fingerprint !== pendingImport.fingerprint || remoteEpoch !== pendingImport.remoteEpoch ? t('import.stale') : t('import.unchanged')}</p>
+        <div className="button-row">
+          <button onClick={cancelImport} disabled={pendingImport.state === 'committing'}>{t('button.cancel')}</button>
+          <button className="primary" onClick={() => void confirmImport()} disabled={pendingImport.state !== 'preview' || fingerprint !== pendingImport.fingerprint || remoteEpoch !== pendingImport.remoteEpoch}>{t('import.confirm')}</button>
+        </div>
+      </Modal>}
+
+      {showHelp && !importLocked && <Modal title={t('help.title')} onClose={() => setShowHelp(false)}>
         <button onClick={() => { setTutorialStep(0); setShowTutorial(true); setShowHelp(false) }}>{t('help.tutorialButton')}</button>
         {t('help.document').split('\n').map((line, index) => <p key={index}>{line}</p>)}
         <h3>{t('help.glossary.title')}</h3>
@@ -797,7 +970,7 @@ function WindowsLikePwa() {
         </dl>
       </Modal>}
 
-      {showTutorial && <Modal title={t('tutorial.title')} onClose={closeTutorial} className={`tutorial-modal tutorial-${activeTutorialTargets[0] || 'default'}`}>
+      {showTutorial && !importLocked && <Modal title={t('tutorial.title')} onClose={closeTutorial} className={`tutorial-modal tutorial-${activeTutorialTargets[0] || 'default'}`}>
         <p className="step-counter">[{tutorialStep + 1}/{tutorialStepCount}] {tutorialSteps[tutorialStep].title}</p>
         <p>{tutorialStep === 0 ? `${t('tutorial.start.body')}\n\n${tutorialSteps[tutorialStep].body}` : tutorialSteps[tutorialStep].body}</p>
         <div className="button-row">
@@ -809,7 +982,7 @@ function WindowsLikePwa() {
         </div>
       </Modal>}
 
-      {highlightModal && <Modal title={t('highlight.list.title', highlightModal.title)} onClose={() => setHighlightModal(null)}>
+      {highlightModal && !importLocked && <Modal title={t('highlight.list.title', highlightModal.title)} onClose={() => setHighlightModal(null)}>
         {highlightModal.items.length
           ? <div className="highlight-list">{highlightModal.items.map((item, index) => (
             <article key={`${highlightModal.field}-${index}`}>
@@ -873,7 +1046,7 @@ function SelectionSummary({ t, selection, highlights }: { t: T; selection: TextS
   return <div className="selection-hint">{t('highlight.selectionSummary', selection.text.length, highlights)}</div>
 }
 
-function MediaPreview({ media, activeTutorialTargets }: { media?: MediaItem; activeTutorialTargets: string[] }) {
+function MediaPreview({ media, activeTutorialTargets, resolveMedia }: { media?: MediaItem; activeTutorialTargets: string[]; resolveMedia: (id: string) => Promise<{ blob: Blob } | undefined> }) {
   const { t } = useI18n()
   const [preview, setPreview] = useState<{ mediaId: string; url: string } | null>(null)
 
@@ -881,7 +1054,7 @@ function MediaPreview({ media, activeTutorialTargets }: { media?: MediaItem; act
     let alive = true
     let objectUrl = ''
     if (!media) return
-    getMediaBlob(media.blobRef).then((stored) => {
+    resolveMedia(media.blobRef).then((stored) => {
       if (!alive) return
       if (!stored) {
         setPreview(null)
@@ -894,7 +1067,7 @@ function MediaPreview({ media, activeTutorialTargets }: { media?: MediaItem; act
       alive = false
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [media])
+  }, [media, resolveMedia])
 
   const url = preview && preview.mediaId === media?.id ? preview.url : ''
 
@@ -906,31 +1079,64 @@ function MediaPreview({ media, activeTutorialTargets }: { media?: MediaItem; act
     {media && url && media.type === 'image' && <img src={url} alt={media.originalName} />}
     {media && url && media.type === 'audio' && <audio src={url} controls />}
     {media && !url && <span>{media.type === 'image' ? t('preview.imageMissing') : t('preview.audioMissing')}</span>}
-    {media && <span>{media.type} / {Math.round(media.size / 1024)} KB</span>}
+    {media && <span>{t(media.type === 'image' ? 'media.type.image' : 'media.type.audio')} / {t('media.size', Math.round(media.size / 1024))}</span>}
   </div>
 }
 
-function MediaList({ media, onRemove, onCaption }: { media: MediaItem[]; onRemove: (id: string) => void; onCaption: (id: string, caption: string) => void }) {
+function MediaList({ media, onRemove, onCaption, onSelect }: { media: MediaItem[]; onRemove: (id: string) => void; onCaption: (id: string, caption: string) => void; onSelect: (id: string) => void }) {
   const { t } = useI18n()
   if (!media.length) return null
   return <div className="media-list">
     {media.map((item) => <article key={item.id}>
-      <div><strong>{item.type}</strong><span>{item.originalName}</span></div>
+      <div><strong>{t(item.type === 'image' ? 'media.type.image' : 'media.type.audio')}</strong><button onClick={() => onSelect(item.id)}>{item.originalName}</button></div>
       <input value={item.caption} onChange={(event) => onCaption(item.id, event.target.value)} placeholder={t('label.mediaCaption')} />
       <button className="danger" onClick={() => onRemove(item.id)}>{t('button.delete')}</button>
     </article>)}
   </div>
 }
 
-function Modal({ title, children, onClose, className = '' }: { title: string; children: React.ReactNode; onClose: () => void; className?: string }) {
+function Modal({ title, children, onClose, className = '', closeDisabled = false }: { title: string; children: React.ReactNode; onClose: () => void; className?: string; closeDisabled?: boolean }) {
   const { t } = useI18n()
-  return <div className={`modal-backdrop ${className}`}><section className="modal"><header><h2>{title}</h2><button onClick={onClose}>{t('button.close')}</button></header>{children}</section></div>
+  const dialog = useRef<HTMLElement | null>(null)
+  const interactiveTour = className.includes('tutorial-modal')
+  useEffect(() => { dialog.current?.focus() }, [])
+  return <div className={`modal-backdrop ${className}`}><section className="modal" ref={dialog} role="dialog" aria-modal={!interactiveTour} aria-label={title} tabIndex={-1} onKeyDown={(event) => {
+    if (event.key === 'Escape' && !closeDisabled) { event.stopPropagation(); onClose() }
+    if (event.key === 'Tab' && !interactiveTour) {
+      const targets = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]')].filter((item) => item.offsetParent !== null)
+      const first = targets[0], last = targets.at(-1)
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && (document.activeElement === last || document.activeElement === event.currentTarget)) { event.preventDefault(); first?.focus() }
+    }
+  }}><header><h2>{title}</h2><button onClick={onClose} disabled={closeDisabled}>{t('button.close')}</button></header>{children}</section></div>
 }
 
 type HighlightField = 'CardQuestion' | 'CardAnswer' | 'CardHint' | 'CardHint2' | 'NoteTitle' | 'NoteBody'
 type T = (key: string, ...args: Array<string | number>) => string
 type CardForm = Pick<CardEntry, 'question' | 'answer' | 'hint' | 'questionHighlights' | 'answerHighlights' | 'hintHighlights' | 'media'> & { hint2: string; hint2Highlights: TextHighlight[] }
 type NoteForm = Pick<NoteEntry, 'title' | 'body' | 'titleHighlights' | 'bodyHighlights' | 'media'>
+
+function cardFormFrom(item: CardEntry): CardForm {
+  return { question: item.question, answer: item.answer, hint: item.hint ?? '', hint2: item.hint2 ?? '', questionHighlights: item.questionHighlights ?? [], answerHighlights: item.answerHighlights ?? [], hintHighlights: item.hintHighlights ?? [], hint2Highlights: item.hint2Highlights ?? [], media: item.media }
+}
+
+function noteFormFrom(item: NoteEntry): NoteForm {
+  return { title: item.title, body: item.body, titleHighlights: item.titleHighlights ?? [], bodyHighlights: item.bodyHighlights ?? [], media: item.media }
+}
+
+function describeImport(current: WorkspaceDraft, incoming: WorkspaceDraft): [number, number, number] {
+  let added = 0, updated = 0, collisions = 0
+  for (const [existing, entries] of [[current.cards, incoming.cards], [current.notes, incoming.notes]] as const) {
+    let simulated: (CardEntry | NoteEntry)[] = [...existing]
+    for (const entry of entries) {
+      const match = entry.stableKey && simulated.some((item) => item.stableKey === entry.stableKey)
+      if (match) updated += 1
+      else { added += 1; if (simulated.some((item) => item.id === entry.id)) collisions += 1 }
+      simulated = mergeImportedEntries(simulated, [entry])
+    }
+  }
+  return [added, updated, collisions]
+}
 interface TextSelectionState { start: number; end: number; text: string }
 interface FieldBlockProps {
   label?: string
@@ -999,7 +1205,7 @@ function resolveFolderName(names: { path: string; displayName: string }[], path:
 
 function mergeFolderNames<T extends { path: string; displayName: string }>(left: T[], right: T[]): T[] {
   const map = new Map(left.map((item) => [item.path, item]))
-  right.forEach((item) => map.set(item.path, item))
+  right.forEach((item) => map.set(item.path, { ...map.get(item.path), ...item }))
   return Array.from(map.values())
 }
 
@@ -1190,7 +1396,7 @@ function clamp(value: number, min: number, max: number) {
 
 function loadColumnWidths() {
   try {
-    const raw = JSON.parse(localStorage.getItem(columnWidthStorageKey) || '{}') as Partial<typeof defaultColumnWidths>
+    const raw = JSON.parse(getPreference(columnWidthStorageKey) || '{}') as Partial<typeof defaultColumnWidths>
     return {
       left: clamp(Number(raw.left) || defaultColumnWidths.left, 520, 760),
       right: clamp(Number(raw.right) || defaultColumnWidths.right, 200, 340),
@@ -1200,7 +1406,7 @@ function loadColumnWidths() {
   }
 }
 
-async function saveBlobWithPicker(blob: Blob, fileName: string): Promise<'picked' | 'fallback' | 'cancelled'> {
+async function saveBlobWithPicker(blob: Blob, fileName: string, description: string): Promise<'picked' | 'fallback' | 'cancelled'> {
   const picker = window.showSaveFilePicker
   if (!picker) {
     downloadBlob(blob, fileName)
@@ -1209,7 +1415,7 @@ async function saveBlobWithPicker(blob: Blob, fileName: string): Promise<'picked
   try {
     const handle = await picker({
       suggestedName: fileName,
-      types: [{ description: 'ZIP archive', accept: { 'application/zip': ['.zip'] } }],
+      types: [{ description, accept: { 'application/zip': ['.zip'] } }],
     })
     const writable = await handle.createWritable()
     await writable.write(blob)

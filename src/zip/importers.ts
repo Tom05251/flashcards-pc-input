@@ -2,7 +2,7 @@ import JSZip from 'jszip'
 import type { CardEntry, MediaItem, NoteEntry, WorkspaceData, WorkspaceDraft } from '../models'
 import { emptyWorkspace, mergeImportedEntries, normalizeWorkspaceDraft } from '../models'
 import { safeZipPath } from '../security/files'
-import { deleteMediaBlob, saveMediaBlob } from '../storage/db'
+import type { StagedMedia } from '../storage/db'
 
 // JSZip 3.10 exposes this documented API but omits it on JSZipObject's types.
 declare module 'jszip' {
@@ -13,7 +13,8 @@ declare module 'jszip' {
 
 export interface ImportPreview {
   workspace: WorkspaceDraft
-  warnings: string[]
+  warnings: { kind: 'missing-media'; path: string }[]
+  media: StagedMedia[]
 }
 
 const decodeUtf8 = (bytes: ArrayBuffer | Uint8Array) => new TextDecoder('utf-8', { fatal: true }).decode(bytes)
@@ -57,20 +58,16 @@ async function importZip(file: File): Promise<ImportPreview> {
   // Validate the whole archive first. Namespacing prevents a later import from
   // overwriting a blob referenced by a previous workspace or by a shared item.
   const namespace = `import:${crypto.randomUUID()}:`
-  const written: string[] = []
-  try {
-    for (const { path, blob } of assets) {
-      const reference = namespace + path
-      await saveMediaBlob(reference, blob, path.split('/').pop() ?? path, blob.type)
-      written.push(reference)
-      attachBlobRef(workspace, path, reference, blob.size)
-    }
-  } catch (error) {
-    await Promise.all(written.map(deleteMediaBlob))
-    throw error
-  }
-  const warnings = [...referenced].filter((path) => !assets.some((asset) => asset.path === path)).map((path) => `Missing media: ${path}`)
-  return { workspace, warnings }
+  const media = assets.map(({ path, blob }) => {
+    const reference = namespace + path
+    attachBlobRef(workspace, path, reference, blob.size)
+    return { id: reference, blob, name: path.split('/').pop() ?? path, mime: blob.type }
+  })
+  const warnings = [...referenced].filter((path) => !assets.some((asset) => asset.path === path))
+    .map((path) => ({ kind: 'missing-media' as const, path }))
+  // The preview owns these staged Blobs only in memory. No IndexedDB access,
+  // identifier consumption or cleanup writes occur before explicit commit.
+  return { workspace, warnings, media }
 }
 
 interface ZipEntryInfo { size: number; crc: number }
@@ -157,7 +154,7 @@ function readZipEntry(entry: JSZip.JSZipObject, expected: ZipEntryInfo, keep: bo
 }
 
 export function importJson(text: string): ImportPreview {
-  return { workspace: normalizeWorkspace(JSON.parse(text.replace(/^\uFEFF/, ''))), warnings: [] }
+  return { workspace: normalizeWorkspace(JSON.parse(text.replace(/^\uFEFF/, ''))), warnings: [], media: [] }
 }
 
 export function importCsv(text: string): ImportPreview {
@@ -230,7 +227,7 @@ export function importCsv(text: string): ImportPreview {
     }
     raw[card ? 'cards' : 'notes'].push(record)
   })
-  return { workspace: normalizeWorkspace(raw), warnings: [] }
+  return { workspace: normalizeWorkspace(raw), warnings: [], media: [] }
 }
 
 export function normalizeWorkspace(input: unknown): WorkspaceDraft {

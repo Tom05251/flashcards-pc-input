@@ -9,7 +9,9 @@ interface ExportResult {
   missingMedia: string[]
 }
 
-export async function buildAndroidZip(draft: WorkspaceDraft): Promise<ExportResult> {
+type MediaResolver = (id: string) => Promise<{ blob: Blob } | undefined>
+
+export async function buildAndroidZip(draft: WorkspaceDraft, resolveMedia: MediaResolver = getMediaBlob): Promise<ExportResult> {
   const zip = new JSZip()
   const used = new Set<string>()
   const missingMedia: string[] = []
@@ -17,8 +19,8 @@ export async function buildAndroidZip(draft: WorkspaceDraft): Promise<ExportResu
 
   const content: WorkspaceData = {
     ...workspace,
-    cards: await Promise.all(workspace.cards.map((card) => prepareCard(card, zip, used, missingMedia))),
-    notes: await Promise.all(workspace.notes.map((note) => prepareNote(note, zip, used, missingMedia))),
+    cards: await Promise.all(workspace.cards.map((card) => prepareCard(card, zip, used, missingMedia, resolveMedia))),
+    notes: await Promise.all(workspace.notes.map((note) => prepareNote(note, zip, used, missingMedia, resolveMedia))),
   }
 
   zip.file('content.json', JSON.stringify(content, exchangeReplacer, 2))
@@ -84,11 +86,11 @@ export function downloadBlob(blob: Blob, fileName: string) {
   anchor.download = fileName
   anchor.rel = 'noopener'
   anchor.click()
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
-async function prepareCard(card: CardEntry, zip: JSZip, used: Set<string>, missingMedia: string[]): Promise<CardEntry> {
-  const media = await prepareMedia(card.media, zip, used, missingMedia, `Card ${card.id}`)
+async function prepareCard(card: CardEntry, zip: JSZip, used: Set<string>, missingMedia: string[], resolveMedia: MediaResolver): Promise<CardEntry> {
+  const media = await prepareMedia(card.media, zip, used, missingMedia, `#${card.id}`, resolveMedia)
   return {
     ...card,
     cardId: card.id,
@@ -98,17 +100,17 @@ async function prepareCard(card: CardEntry, zip: JSZip, used: Set<string>, missi
   }
 }
 
-async function prepareNote(note: NoteEntry, zip: JSZip, used: Set<string>, missingMedia: string[]): Promise<NoteEntry> {
-  const media = await prepareMedia(note.media, zip, used, missingMedia, `Note ${note.id}`)
+async function prepareNote(note: NoteEntry, zip: JSZip, used: Set<string>, missingMedia: string[], resolveMedia: MediaResolver): Promise<NoteEntry> {
+  const media = await prepareMedia(note.media, zip, used, missingMedia, `#${note.id}`, resolveMedia)
   return { ...note, media, audioPath: firstMedia(media, 'audio'), imagePath: allMediaPaths(media, 'image') }
 }
 
-async function prepareMedia(media: MediaItem[], zip: JSZip, used: Set<string>, missingMedia: string[], owner: string): Promise<MediaItem[]> {
+async function prepareMedia(media: MediaItem[], zip: JSZip, used: Set<string>, missingMedia: string[], owner: string, resolveMedia: MediaResolver): Promise<MediaItem[]> {
   const out: MediaItem[] = []
   for (const item of media) {
-    const stored = item.blobRef ? await getMediaBlob(item.blobRef) : undefined
+    const stored = item.blobRef ? await resolveMedia(item.blobRef) : undefined
     if (!stored) {
-      missingMedia.push(`${owner} ${item.type}: ${item.originalName || item.fileName}`)
+      missingMedia.push(`${owner}: ${item.originalName || item.fileName}`)
       out.push({ ...item })
       continue
     }
