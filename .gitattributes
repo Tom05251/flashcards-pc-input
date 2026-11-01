@@ -1,0 +1,3 @@
+# Preserve the exact SVG build bytes when deploying from Windows.
+icons/icon.svg -text
+icons.svg -text
