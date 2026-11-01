@@ -1,8 +1,13 @@
 @echo off
-setlocal
-
+setlocal DisableDelayedExpansion
+chcp 65001 >nul
 cd /d "%~dp0"
-
-start "" "http://localhost:5173/"
-npm run dev -- --host 127.0.0.1
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Node.js 22 or later is required: https://nodejs.org/
+  pause
+  exit /b 1
+)
+node "%~dp0local-preview\start-local.cjs" %*
+if errorlevel 1 pause
 

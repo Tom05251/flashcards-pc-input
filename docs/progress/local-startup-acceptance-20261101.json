@@ -1,0 +1,31 @@
+{
+  "status": "LOCAL_STARTUP_ACCEPTED",
+  "date": "2026-11-01",
+  "url": "http://127.0.0.1:5185/flashcards-pc-input/",
+  "runtime": "Existing Node.js v24.12.0; no npm packages needed at startup",
+  "zip": "C:/Users/minor/Downloads/Flashcards_PWA_PC_Start_20261101.zip",
+  "zipSha256": "3b58558922fa0e81326d9ebce1192dc98c21bfa2780850f6b76d38f450904dc8",
+  "extracted": "C:/Users/minor/Downloads/Flashcards PWA PC 起動 20261101",
+  "buildSourceCommit": "46c1b731f306bfe53e4d3f70027417105cc8e9a6",
+  "buildFiles": 51,
+  "buildBytesMatchOriginalPublicZipAndDist": true,
+  "originalPublicZipSha256": "f3881ade3e8b4b5b5c01fb12956554ad6b7c61607138c60da0ae753600f014b7",
+  "casesPassed": 7,
+  "pageErrors": 0,
+  "verified": [
+    "Extracted actual 起動.cmd --no-open through cmd.exe, in a path containing spaces and Japanese",
+    "All 51 HTTP file hashes, MIME, HEAD, redirects, rejected write methods and traversal",
+    "Occupied port rejected without stopping or replacing the original process",
+    "Isolated headless Chrome: real UI card creation, Hint1, Hint2 and committed IndexedDB data",
+    "Service-worker scope and offline reload after stopping the owned server",
+    "Same-URL CMD restart, reload and saved data retained"
+  ],
+  "notVerified": [
+    "Visible default-browser auto-opening (QA deliberately passed --no-open)",
+    "Node.js-not-installed dialog on another PC"
+  ],
+  "cleanup": "Owned headless browser and both owned CMD/server process trees closed; port 5185 no longer listening",
+  "evidence": "C:/Users/minor/AndroidStudioProjects/FlashcardsAndroidStarter/.gradle-session/web-pwa-39-20261031T141213Z/local-launcher/result.json",
+  "screenshot": "C:/Users/minor/AndroidStudioProjects/FlashcardsAndroidStarter/.gradle-session/web-pwa-39-20261031T141213Z/local-launcher/startup-saved.png",
+  "publication": "Not performed"
+}

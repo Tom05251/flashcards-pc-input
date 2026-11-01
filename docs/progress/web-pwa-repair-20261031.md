@@ -49,3 +49,7 @@ SHA256: `8675474db4527b5058e3c3474913872106e4b71360dcce26f5247a24f37510de`
 5. 公開URLの主要言語・RTL・offline・旧profile更新を隔離profileでsmoke確認し、公開commitを記録する。利用者の実profileを初期化しない。
 
 現在は公開承認待ち。main／gh-pagesへのmerge・push、公開デプロイ、Play upload、強制Push、既存データ初期化は行っていない。
+
+2026-11-01追補：公開用ZIPにPCでの直接起動手段がなかったため、別の起動用ZIP `C:\Users\minor\Downloads\Flashcards_PWA_PC_Start_20261101.zip` と、展開済み `C:\Users\minor\Downloads\Flashcards PWA PC 起動 20261101` を用意した。「起動.cmd」をダブルクリックして使う。既存Node.js 22以降が必要で、npm installは不要。配信URLを `http://127.0.0.1:5185/flashcards-pc-input/` に固定し、別ポートへの自動切替や既存processの停止は行わない。公開サイトとは保存領域が別になる。
+
+アプリ51ファイルは元の公開用ZIP／distと全バイト一致。Buildは繰り返していない。展開した実CMDの起動、HTTP／MIME／HEAD、ポート競合、カード・Hint1／Hint2の実UI保存、offline再表示、サーバー再起動後の保存データ保持の7件に合格。QAは `--no-open` と隔離headless Chromeを使い、通常ブラウザーの自動表示と別PCのNode未導入画面は未検証。証拠は [local-startup-acceptance-20261101.json](local-startup-acceptance-20261101.json)。QA用processは終了し、ユーザーのブラウザー・データ・元ZIP・Android成果物は変更していない。
