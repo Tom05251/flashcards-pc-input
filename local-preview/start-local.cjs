@@ -31,16 +31,9 @@ if (Number(process.versions.node.split('.')[0]) < 22) {
 } else if (!fs.existsSync(path.join(root, 'index.html'))) {
   fail('アプリのファイルが見つかりません。ZIPを「すべて展開」してから「起動.cmd」を開いてください。\n開発用フォルダーでは先に npm run build を実行してください。')
 } else {
-  // Serve an in-memory allowlist of regular build files; never expose local files.
-  const files = new Map()
-  function load(directory, prefix = '') {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      const relative = prefix + entry.name
-      if (entry.isDirectory()) load(path.join(directory, entry.name), relative + '/')
-      else if (entry.isFile()) files.set(relative, fs.readFileSync(path.join(directory, entry.name)))
-    }
-  }
-  load(root)
+  // Read the current build on each request. Keeping startup bytes in memory
+  // would keep serving the old app and worker after an on-disk update.
+  const realRoot = fs.realpathSync(root)
 
   const server = http.createServer((request, response) => {
     response.setHeader('Cache-Control', 'no-cache')
@@ -61,8 +54,17 @@ if (Number(process.versions.node.split('.')[0]) < 22) {
       return
     }
     const relative = pathname.startsWith(base) ? pathname.slice(base.length) || 'index.html' : null
-    const bytes = files.get(relative)
-    if (!bytes) { response.writeHead(404).end(); return }
+    if (relative === null) { response.writeHead(404).end(); return }
+    let bytes
+    try {
+      const file = fs.realpathSync(path.join(realRoot, relative))
+      const inside = path.relative(realRoot, file)
+      if (inside === '..' || inside.startsWith('..' + path.sep) || path.isAbsolute(inside) || !fs.statSync(file).isFile()) {
+        response.writeHead(404).end()
+        return
+      }
+      bytes = fs.readFileSync(file)
+    } catch { response.writeHead(404).end(); return }
     response.writeHead(200, {
       'Content-Type': types[path.extname(relative)] || 'application/octet-stream',
       'Content-Length': bytes.length,

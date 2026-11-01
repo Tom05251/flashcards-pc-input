@@ -201,11 +201,22 @@ function WindowsLikePwa() {
   }, [unsaved])
 
   useEffect(() => {
-    updateServiceWorker.current = registerSW({ immediate: true, onNeedRefresh: () => setUpdateAvailable(true), onNeedReload: () => {
+    let controller = navigator.serviceWorker?.controller
+    const onNeedReload = () => {
+      if (activatedUpdate.current) return
       activatedUpdate.current = true
       if (reloadBlocked.current) setUpdateAvailable(true)
       else window.location.reload()
-    } })
+    }
+    const onControllerChange = () => {
+      const next = navigator.serviceWorker.controller
+      const replaced = controller && next && controller !== next
+      controller = next
+      if (replaced) onNeedReload()
+    }
+    navigator.serviceWorker?.addEventListener('controllerchange', onControllerChange)
+    updateServiceWorker.current = registerSW({ immediate: true, onNeedRefresh: () => setUpdateAvailable(true), onNeedReload })
+    return () => navigator.serviceWorker?.removeEventListener('controllerchange', onControllerChange)
   }, [])
 
   useEffect(() => {
