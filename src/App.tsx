@@ -83,6 +83,7 @@ function WindowsLikePwa() {
   const [showTutorial, setShowTutorial] = useState(() => getPreference('flashcards-pwa-tutorial-completed') !== 'true')
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(() => isStandaloneDisplay())
+  const [showInstallGuidance, setShowInstallGuidance] = useState(() => getPreference('flashcards-pwa-install-guidance-dismissed') !== 'true')
   const [showInstallHelp, setShowInstallHelp] = useState(false)
   const [tutorialStep, setTutorialStep] = useState(0)
   const [fastEdit, setFastEdit] = useState(false)
@@ -225,13 +226,24 @@ function WindowsLikePwa() {
     const onAppInstalled = () => {
       setIsInstalled(true)
       setInstallPrompt(null)
+      setShowInstallHelp(false)
       notify(t('install.installedMessage'))
+    }
+    const displayMode = window.matchMedia('(display-mode: standalone)')
+    const onDisplayModeChanged = () => {
+      if (isStandaloneDisplay()) {
+        setIsInstalled(true)
+        setInstallPrompt(null)
+        setShowInstallHelp(false)
+      }
     }
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
     window.addEventListener('appinstalled', onAppInstalled)
+    displayMode.addEventListener('change', onDisplayModeChanged)
     return () => {
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
       window.removeEventListener('appinstalled', onAppInstalled)
+      displayMode.removeEventListener('change', onDisplayModeChanged)
     }
   }, [t])
 
@@ -786,7 +798,7 @@ function WindowsLikePwa() {
           <select value={language} onChange={(event) => setLanguage(event.target.value)} aria-label={t('button.language')}>
             {supportedLanguages.map((item) => <option value={item.code} key={item.code}>{languageNameForUi(item.code, language, item.displayName)}{item.beta ? ` (${t('language.beta')})` : ''}</option>)}
           </select>
-          <button className="primary" onClick={installAppToPc}>{isInstalled ? t('install.installed') : t('install.addToPc')}</button>
+          {!isInstalled && <button className="primary" onClick={installAppToPc}>{t('install.addToPc')}</button>}
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? t('button.light') : t('button.dark')}</button>
           <button className={withTutorialFocus('', activeTutorialTargets, 'help')} onClick={() => setShowHelp(true)}>{t('button.help')}</button>
           <label className={withTutorialFocus('file-button', activeTutorialTargets, 'open-file')}>{t('button.open')}<input type="file" accept=".zip,.json,.csv" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void openFile(file) }} /></label>
@@ -797,11 +809,15 @@ function WindowsLikePwa() {
           <button onClick={() => downloadBlob(buildWorkspaceJson(workspace), 'workspace.json')}>{t('button.exportJson')}</button>
           <button onClick={saveZip} className={withTutorialFocus('primary', activeTutorialTargets, 'zip-export')}>{t('button.saveZip')}</button>
         </div>
-        <div className="install-guidance">
+        {!isInstalled && showInstallGuidance && <div className="install-guidance">
+          <button className="install-guidance-close" aria-label={t('button.close')} title={t('button.close')} onClick={() => {
+            setShowInstallGuidance(false)
+            setPreference('flashcards-pwa-install-guidance-dismissed', 'true')
+          }}>×</button>
           <strong>{t('install.guidanceTitle')}</strong>
           <span>{t('install.guidanceBody')}</span>
           <button onClick={() => setShowInstallHelp(true)}>{t('install.showSteps')}</button>
-        </div>
+        </div>}
       </header>
 
       {message && !(message.text === savedMessage && unsaved) && <div className="status-line panel" role="status" inert={importLocked}><span>{message.text}</span><button onClick={() => setMessage(null)}>{t('button.close')}</button></div>}
@@ -809,7 +825,7 @@ function WindowsLikePwa() {
         <span>{t('pwa.update.available')} {unsaved ? t('pwa.update.unsaved') : ''}</span>
         <button disabled={unsaved} onClick={() => { if (reloadBlocked.current) return; if (activatedUpdate.current) window.location.reload(); else void updateServiceWorker.current?.(true) }}>{t('pwa.update.reload')}</button>
       </div>}
-      {showInstallHelp && !importLocked && (
+      {showInstallHelp && !isInstalled && !importLocked && (
         <div className="install-help panel" role="dialog" aria-label={t('install.helpTitle')}>
           <div>
             <h2>{t('install.helpTitle')}</h2>
