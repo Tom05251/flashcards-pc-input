@@ -1,0 +1,83 @@
+{
+  "status": "PUBLISHED_VERIFIED",
+  "createdUtc": "2026-11-01T00:49:54.259Z",
+  "productSourceCommit": "afae3acabb1a7e6823e0c27622e4e041efca6f1e",
+  "url": "https://tom05251.github.io/flashcards-pc-input/",
+  "androidEntryGuide": "https://tom05251.github.io/growtree/download.html",
+  "publication": {
+    "flashcards-pc-input": {
+      "commit": "553ddf4c38f22a856bc526a52aca9184e244d70d",
+      "status": "built",
+      "updatedAt": "2026-11-01T00:45:40Z"
+    },
+    "growtree": {
+      "commit": "eb5a61eccd59d9abadfe81de5d116332a8e2bdef",
+      "status": "built",
+      "updatedAt": "2026-11-01T00:44:50Z"
+    }
+  },
+  "installDisplayCases": [
+    {
+      "id": "browser-keyboard-close-persists-reload-without-changing-saved-data",
+      "status": "PASS"
+    },
+    {
+      "id": "all-39-browser-banner-top-right-close-and-data-invariant",
+      "status": "PASS",
+      "locales": 39
+    },
+    {
+      "id": "actual-chrome-native-installed-first-display-no-guidance-no-installed-button",
+      "status": "PASS"
+    },
+    {
+      "id": "all-39-in-actual-installed-window-install-controls-absent",
+      "status": "PASS",
+      "locales": 39
+    },
+    {
+      "id": "actual-installed-offline-reload-no-install-controls-data-retained",
+      "status": "PASS"
+    }
+  ],
+  "publicFilesByteIdentical": 51,
+  "publicFunctionalAssertionsPassed": [
+    "both-pages-builds-built-at-authorized-commits",
+    "all-51-public-http-files-byte-identical-to-verified-build",
+    "android-guide-public-japanese-link-opens-current-pwa",
+    "public-real-ui-create-hints-close-persist-reload-idb-data-invariant"
+  ],
+  "publicRtlOffline": "PASS",
+  "publicPwaIdentity": "https://tom05251.github.io/flashcards-pc-input/",
+  "pageErrors": 0,
+  "originalFailedAggregatesNotAccepted": true,
+  "adjudication": [
+    "Initial toolbar expectation 9 was a QA counting error: 8 remaining toolbar buttons are correct. Existing browser39 assertions retained; installed-only continuation passed.",
+    "Initial public offline check incorrectly expected AR to survive explicit ?lang=ja reload. The explicit JA query correctly wins. A separate ?lang=ar public/offline test passed."
+  ],
+  "appMainUnchanged": "468cb24a89b16a0b307031e3187e3fc55c174e86",
+  "localKit": {
+    "status": "PASS",
+    "kit": "C:/Users/minor/Downloads/Flashcards PWA PC 起動 20261101",
+    "sourceCommit": "afae3acabb1a7e6823e0c27622e4e041efca6f1e",
+    "staticFilesUpdated": 51,
+    "originalArchiveUnchanged": true,
+    "userServerStopped": false,
+    "indexedDbModified": false,
+    "requiresUserLauncherRestart": true
+  },
+  "updatedLocalZip": "C:/Users/minor/Downloads/Flashcards_PWA_PC_Start_20261101_UIFIX.zip",
+  "publicZip": "C:\\Users\\minor\\AndroidStudioProjects\\FlashcardsAndroidStarter\\.gradle-session\\web-pwa-39-20261031T141213Z\\release\\flashcards-pc-input-published-20261101.zip",
+  "publicZipSha256": "1155a80465a417f776d1905e0c84143fd7e0929709476839f8042fe0530dc4f5",
+  "androidAab": "C:/Users/minor/AndroidStudioProjects/FlashcardsAndroidStarter/app/user/release/app-user-release.aab",
+  "androidAabSha256": "8675474db4527b5058e3c3474913872106e4b71360dcce26f5247a24f37510de",
+  "androidRebuilt": false,
+  "playUpload": false,
+  "inheritedUnverified": [
+    "Native Windows save-dialog selection",
+    "Physical audio/Bluetooth",
+    "Other OS-specific installation behavior",
+    "Every translation key in every UI state"
+  ],
+  "evidenceDirectory": "C:\\Users\\minor\\AndroidStudioProjects\\FlashcardsAndroidStarter\\.gradle-session\\web-pwa-39-20261031T141213Z\\install-ui-publish-20261101"
+}
